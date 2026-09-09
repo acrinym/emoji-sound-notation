@@ -12,6 +12,7 @@ class WebEditorTests(unittest.TestCase):
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
         self.assertIn("Play score", html)
         self.assertIn("Export ESN", html)
+        self.assertIn('src="esn-domain.js"', html)
         self.assertIn('src="editor.js"', html)
         self.assertIn("AudioContext", script)
         self.assertIn("pointerdown", script)

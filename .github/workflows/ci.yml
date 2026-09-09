@@ -22,7 +22,9 @@ jobs:
       - run: python -m json.tool docs/esn-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-playback-1.schema.json >/dev/null
       - run: python -m json.tool examples/first-score.esn.json >/dev/null
+      - run: node --check web/esn-domain.js
       - run: node --check web/editor.js
+      - run: node --test tests/web_domain.test.js
       - run: python -m unittest discover -s tests -v
       - run: esn validate examples/first-score.esn.json --registry registries/core.json
       - run: esn render examples/first-score.esn.json --registry registries/core.json -o /tmp/first-a.svg

@@ -17,6 +17,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const {noteToMidi, midiToNote} = EsnDomain;
 
 async function loadBundled() {
   const [score, registryDoc, playbackDoc] = await Promise.all([
@@ -41,22 +42,6 @@ function sourceFor(event) {
 function profileFor(event) {
   return state.profiles.get(`${event.source}/${event.gesture}`)
       || state.profiles.get(`${event.source}/*`);
-}
-
-function noteToMidi(note) {
-  const match = /^([A-Ga-g])([#b]?)(-?\d+)$/.exec(note || "");
-  if (!match) return null;
-  const offsets = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
-  let pitch = offsets[match[1].toUpperCase()];
-  if (match[2] === "#") pitch += 1;
-  if (match[2] === "b") pitch -= 1;
-  return (Number(match[3]) + 1) * 12 + pitch;
-}
-
-function midiToNote(midi) {
-  const names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-  const rounded = Math.max(0, Math.min(127, Math.round(midi)));
-  return `${names[rounded % 12]}${Math.floor(rounded / 12) - 1}`;
 }
 
 function pitchMidi(event) {
