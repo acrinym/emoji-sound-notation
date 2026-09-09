@@ -16,3 +16,6 @@ dist/
 # Generated ESN artifacts
 examples/*.canonical.json
 examples/*.svg
+
+# Generated audio artifacts
+examples/*.wav

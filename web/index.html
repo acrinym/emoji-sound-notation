@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Emoji Sound Notation Editor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Emoji Sound Notation</h1>
+      <p>Beadtrain 2 editor · source + gesture + time + optional pitch</p>
+    </div>
+    <div class="toolbar">
+      <button id="reload">Reload example</button>
+      <button id="play-score">▶ Play score</button>
+      <button id="export">Export ESN</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="panel palette-panel">
+      <h2>Sound palette</h2>
+      <p class="hint">Pick a source, then add its sound gesture.</p>
+      <div id="palette"></div>
+    </aside>
+
+    <section class="workspace">
+      <div class="ruler" id="ruler"></div>
+      <div id="timeline" class="timeline" aria-label="ESN score timeline"></div>
+      <div class="legend">
+        <span>↔ time</span>
+        <span>↕ pitch</span>
+        <span>drag events to move them</span>
+        <span>unpitched sounds stay in lanes</span>
+      </div>
+    </section>
+
+    <aside class="panel inspector-panel">
+      <h2>Inspector</h2>
+      <div id="empty-inspector" class="hint">Select an event.</div>
+      <form id="inspector" hidden>
+        <label>ID <input id="event-id" readonly></label>
+        <label>Source <input id="event-source" readonly></label>
+        <label>Gesture <select id="event-gesture"></select></label>
+        <label>Onset <input id="event-onset" type="number" min="0" step="0.25"></label>
+        <label>Duration <input id="event-duration" type="number" min="0.01" step="0.25"></label>
+        <label id="pitch-row">Pitch <input id="event-pitch" placeholder="C4"></label>
+        <label>Dynamics <input id="event-dynamics" type="range" min="0" max="1" step="0.01"></label>
+        <div class="inspector-actions">
+          <button type="button" id="play-event">▶ Preview</button>
+          <button type="button" id="delete-event" class="danger">Delete</button>
+        </div>
+      </form>
+      <pre id="status" aria-live="polite"></pre>
+    </aside>
+  </main>
+
+  <script src="editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+[train]
+name        = "beadtrain_2_playback_editor"
+title       = "Beadtrain 2 — Playback and score editor"
+description = """
+Make ESN audible and authorable while preserving ESN-1 as the semantic authority and keeping playback bindings separate.
+"""
+created     = "2026-09-08"
+status      = "in_progress"
+
+[[cars]]
+id             = "contract"
+bead           = "emoji-sound-notation-auy.1"
+title          = "Define playback and editor contracts"
+parallel_start = false
+depends_on     = []
+summary        = "Specify esn-playback/1, deterministic synthesis, editor mutation rules, and accessibility boundaries."
+
+[[cars]]
+id             = "audio"
+bead           = "emoji-sound-notation-auy.2"
+title          = "Implement deterministic ESN audio renderer"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Render validated ESN events to deterministic mono PCM WAV using separate playback profiles."
+
+[[cars]]
+id             = "editor"
+bead           = "emoji-sound-notation-auy.3"
+title          = "Build browser ESN score editor"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Edit, drag, preview, delete, add, and export ordinary ESN-1 events in a dependency-free browser surface."
+
+[[cars]]
+id             = "profiles"
+bead           = "emoji-sound-notation-auy.4"
+title          = "Create core playback profiles and editor example"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Cover the core semantic source registry with deterministic reference playback mappings and example integration."
+
+[[cars]]
+id             = "qualify"
+bead           = "emoji-sound-notation-auy.5"
+title          = "Qualify Beadtrain 2 end to end"
+parallel_start = false
+depends_on     = ["audio", "editor", "profiles"]
+summary        = "Run full product gates, prove deterministic WAV output, validate the train, and capture exact-state receipts."
+
+[meta]
+one_liner    = "Make ESN audible and authorable without changing its semantic core."
+prior_car     = "beadtrain_1_semantic_foundation"
+watch         = "Keep playback binding out of ESN-1 semantic identity; preserve deterministic qualification."
+couples_with  = []

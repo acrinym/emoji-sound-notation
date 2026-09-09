@@ -1,0 +1,19 @@
+{
+  "format": "esn-playback/1",
+  "sample_rate": 22050,
+  "seed": 20260908,
+  "profiles": [
+    {"source":"instrument:piano","gesture":"*","mode":"oscillator","wave":"triangle","gain":0.55,"attack":0.008,"release":0.18,"base_hz":261.6256},
+    {"source":"instrument:bell","gesture":"*","mode":"oscillator","wave":"sine","gain":0.5,"attack":0.002,"release":0.7,"base_hz":880.0},
+    {"source":"animal:cat","gesture":"meow","mode":"oscillator","wave":"triangle","gain":0.42,"attack":0.03,"release":0.12,"base_hz":440.0},
+    {"source":"animal:cat","gesture":"purr","mode":"oscillator","wave":"square","gain":0.16,"attack":0.08,"release":0.2,"base_hz":95.0},
+    {"source":"animal:cat","gesture":"hiss","mode":"noise","noise_shape":"soft","gain":0.28,"attack":0.02,"release":0.08,"base_hz":440.0},
+    {"source":"animal:cat","gesture":"chirp","mode":"oscillator","wave":"sine","gain":0.36,"attack":0.005,"release":0.08,"base_hz":880.0},
+    {"source":"animal:cat","gesture":"yowl","mode":"oscillator","wave":"saw","gain":0.25,"attack":0.04,"release":0.18,"base_hz":330.0},
+    {"source":"animal:cat","gesture":"growl","mode":"oscillator","wave":"square","gain":0.16,"attack":0.04,"release":0.18,"base_hz":110.0},
+    {"source":"animal:wolf","gesture":"*","mode":"oscillator","wave":"triangle","gain":0.3,"attack":0.08,"release":0.3,"base_hz":220.0},
+    {"source":"nature:rain","gesture":"*","mode":"noise","noise_shape":"soft","gain":0.18,"attack":0.2,"release":0.3,"base_hz":440.0},
+    {"source":"foley:door","gesture":"*","mode":"impulse","gain":0.7,"attack":0.0,"release":0.08,"base_hz":110.0},
+    {"source":"percussion:drum","gesture":"*","mode":"impulse","gain":0.65,"attack":0.0,"release":0.12,"base_hz":90.0}
+  ]
+}
