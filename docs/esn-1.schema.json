@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/esn/esn-1.schema.json",
+  "title": "Emoji Sound Notation ESN-1",
+  "type": "object",
+  "required": ["format", "title", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "esn/1"},
+    "title": {"type": "string", "minLength": 1},
+    "tempo_bpm": {"type": "number", "exclusiveMinimum": 0},
+    "metadata": {"type": "object"},
+    "events": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/event"}
+    }
+  },
+  "$defs": {
+    "pitch": {
+      "oneOf": [
+        {"type":"object","required":["note"],"additionalProperties":false,"properties":{"note":{"type":"string","pattern":"^[A-Ga-g][#b]?-?[0-9]+$"}}},
+        {"type":"object","required":["hz"],"additionalProperties":false,"properties":{"hz":{"type":"number","exclusiveMinimum":0}}}
+      ]
+    },
+    "curvePoint": {
+      "type": "object",
+      "required": ["at", "pitch"],
+      "additionalProperties": false,
+      "properties": {
+        "at": {"type":"number","minimum":0,"maximum":1},
+        "pitch": {"$ref":"#/$defs/pitch"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "source", "gesture", "onset", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type":"string","minLength":1},
+        "source": {"type":"string","minLength":1},
+        "gesture": {"type":"string","minLength":1},
+        "onset": {"type":"number","minimum":0},
+        "duration": {"type":"number","exclusiveMinimum":0},
+        "pitch": {"$ref":"#/$defs/pitch"},
+        "dynamics": {"type":"number","minimum":0,"maximum":1},
+        "articulation": {"enum":["normal","staccato","tenuto","accent","legato"]},
+        "pitch_curve": {
+          "type":"array",
+          "minItems":1,
+          "items":{"$ref":"#/$defs/curvePoint"}
+        }
+      }
+    }
+  }
+}

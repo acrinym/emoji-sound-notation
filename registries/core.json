@@ -1,0 +1,13 @@
+{
+  "format": "esn-registry/1",
+  "name": "ESN Core Sound Sources",
+  "sources": [
+    {"id":"instrument:piano","glyph":"🎹","class":"instrument","pitch_policy":"required","gestures":["strike","sustain"]},
+    {"id":"instrument:bell","glyph":"🔔","class":"instrument","pitch_policy":"optional","gestures":["ring","chime"]},
+    {"id":"animal:cat","glyph":"🐈","class":"animal","pitch_policy":"optional","gestures":["meow","purr","hiss","chirp","yowl","growl"]},
+    {"id":"animal:wolf","glyph":"🐺","class":"animal","pitch_policy":"optional","gestures":["howl","growl","bark"]},
+    {"id":"nature:rain","glyph":"🌧️","class":"environment","pitch_policy":"forbidden","gestures":["fall","drizzle","downpour"]},
+    {"id":"foley:door","glyph":"🚪","class":"foley","pitch_policy":"forbidden","gestures":["slam","close","creak"]},
+    {"id":"percussion:drum","glyph":"🥁","class":"percussion","pitch_policy":"optional","gestures":["hit","roll","rim"]}
+  ]
+}

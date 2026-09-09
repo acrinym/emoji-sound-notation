@@ -1,0 +1,13 @@
+{
+  "format": "esn/1",
+  "title": "First Emoji Sound Score",
+  "tempo_bpm": 96,
+  "events": [
+    {"id":"piano-c4","source":"instrument:piano","gesture":"strike","onset":0,"duration":1,"pitch":{"note":"C4"},"dynamics":0.72},
+    {"id":"cat-meow","source":"animal:cat","gesture":"meow","onset":1,"duration":1.5,"pitch":{"note":"E4"},"pitch_curve":[{"at":0.45,"pitch":{"note":"G4"}},{"at":0.9,"pitch":{"note":"D4"}}],"dynamics":0.82,"articulation":"legato"},
+    {"id":"bell-g5","source":"instrument:bell","gesture":"chime","onset":2.5,"duration":1.25,"pitch":{"note":"G5"},"dynamics":0.65},
+    {"id":"rain-bed","source":"nature:rain","gesture":"fall","onset":0,"duration":5,"dynamics":0.35},
+    {"id":"door-slam","source":"foley:door","gesture":"slam","onset":3.75,"duration":0.22,"dynamics":0.95,"articulation":"accent"},
+    {"id":"drum-hit","source":"percussion:drum","gesture":"hit","onset":4,"duration":0.35,"dynamics":0.88,"articulation":"staccato"}
+  ]
+}
