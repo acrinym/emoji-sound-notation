@@ -3,69 +3,94 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Emoji Sound Notation Editor</title>
+  <title>Emoji Sound Notation</title>
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
-    <div>
+    <div class="brand-block">
       <h1>Emoji Sound Notation</h1>
-      <p>Beadtrain 3 editor · semantic sound + playable bindings + canonical tintable glyphs</p>
+      <p>Build a sound scene, preview the sketch, and hand it off.</p>
     </div>
     <div class="toolbar">
-      <label class="mode-control">Color
-        <select id="color-mode">
-          <option value="pitch_class">Pitch class</option>
-          <option value="scale_degree">Scale degree</option>
+      <label class="mode-control">Color meaning
+        <select id="color-mode" title="Change what event colors mean without changing the score">
+          <option value="pitch_class">Note names</option>
+          <option value="scale_degree">Scale steps</option>
         </select>
       </label>
-      <button id="reload">Reload example</button>
-      <button id="play-score">▶ Play score</button>
-      <button id="export">Export ESN</button>
+      <button id="new-scene" title="Start with an empty sound scene">New</button>
+      <button id="open-project" title="Open an ESN project from this computer">Open</button>
+      <input id="project-file" type="file" accept=".json,.esn.json,application/json" hidden>
+      <button id="reload" title="Restore the bundled example">Reset example</button>
+      <button id="play-score" title="Reference synth preview for timing and pitch">▶ Preview scene</button>
+      <button id="export" title="Save an editable ESN project">Save project</button>
+      <button id="export-cues" title="CSV with beat positions and timecodes">Cue sheet</button>
+      <button id="export-midi" title="Standard MIDI File with timed ESN cue markers">MIDI</button>
     </div>
   </header>
 
   <main>
     <aside class="panel palette-panel">
-      <h2>Sound palette</h2>
-      <p class="hint">Pick a canonical source glyph, then add its sound gesture.</p>
+      <h2>Add a sound</h2>
+      <div class="quick-start">
+        <strong>Start here</strong>
+        <span>Choose what makes the sound, then click an action. Drag left/right for time. Pitched sounds can also move up/down; unpitched sounds stay in the lower rows.</span>
+      </div>
       <div id="palette"></div>
     </aside>
 
     <section class="workspace">
       <div class="ruler" id="ruler"></div>
-      <div id="timeline" class="timeline" aria-label="ESN score timeline"></div>
+      <div id="timeline" class="timeline" aria-label="Sound scene timeline"></div>
       <div class="legend">
         <span>↔ time</span>
         <span>↕ pitch</span>
-        <span id="color-legend">color: absolute pitch class</span>
-        <span>custom SVG glyph = source identity</span>
-        <span>unpitched sounds stay in lanes</span>
+        <span id="color-legend">colors: same note name = same color</span>
+        <span>unpitched sounds use rows below</span>
       </div>
     </section>
 
     <aside class="panel inspector-panel">
-      <h2>Inspector</h2>
-      <div id="empty-inspector" class="hint">Select an event.</div>
+      <section class="scene-settings" aria-label="Scene settings">
+        <h2>Scene</h2>
+        <label>Title <input id="scene-title" maxlength="160"></label>
+        <label>Tempo (BPM) <input id="scene-tempo" type="number" min="1" step="1"></label>
+      </section>
+
+      <h2>Selected sound</h2>
+      <div id="empty-inspector" class="empty-state">
+        <strong>Nothing selected yet.</strong>
+        <span>Click an event on the timeline to edit it, or add one from the left.</span>
+      </div>
       <form id="inspector" hidden>
-        <label>ID <input id="event-id" readonly></label>
-        <label>Source <input id="event-source" readonly></label>
-        <label>Gesture <select id="event-gesture"></select></label>
-        <label>Onset <input id="event-onset" type="number" min="0" step="0.25"></label>
-        <label>Duration <input id="event-duration" type="number" min="0.01" step="0.25"></label>
-        <label id="pitch-row">Pitch <input id="event-pitch" placeholder="C4"></label>
-        <label>Dynamics <input id="event-dynamics" type="range" min="0" max="1" step="0.01"></label>
+        <label>Sound source <input id="event-source" readonly></label>
+        <label>Action <select id="event-gesture"></select></label>
+        <label>Starts at beat <input id="event-onset" type="number" min="0" step="0.25"></label>
+        <label>Length (beats) <input id="event-duration" type="number" min="0.01" step="0.25"></label>
+        <label id="pitch-row">Pitch <input id="event-pitch" placeholder="C4" aria-describedby="pitch-help"><span id="pitch-help" class="field-help">Example: C4, F#4, Bb3</span></label>
+        <label>Loudness <input id="event-dynamics" type="range" min="0" max="1" step="0.01"></label>
         <div class="inspector-actions">
-          <button type="button" id="play-event">▶ Preview</button>
+          <button type="button" id="play-event" title="Reference synth preview for this event">▶ Preview</button>
           <button type="button" id="delete-event" class="danger">Delete</button>
         </div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <label>Event ID <input id="event-id" readonly></label>
+        </details>
       </form>
       <pre id="status" aria-live="polite"></pre>
+      <div class="handoff-note">
+        <strong>What can I do with this?</strong>
+        <span><b>Preview</b> uses a lightweight reference synth to check timing and pitch. <b>Save project</b> keeps the editable ESN score. <b>Cue sheet</b> creates timecoded CSV. <b>MIDI</b> exports playable notes and preserves every sound as a timed cue marker.</span>
+      </div>
     </aside>
   </main>
 
   <script src="esn-domain.js"></script>
   <script src="visual-domain.js"></script>
+  <script src="interchange-domain.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>

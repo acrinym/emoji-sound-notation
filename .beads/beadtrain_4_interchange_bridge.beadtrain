@@ -1,0 +1,52 @@
+[train]
+name        = "beadtrain_4_interchange_bridge"
+title       = "Beadtrain 4 - Loss-aware DAW interchange"
+description = """
+Bridge ESN into MIDI and production cue-sheet workflows without silently dropping semantic events that MIDI cannot represent.
+"""
+created     = "2026-09-09"
+status      = "in_progress"
+
+[[cars]]
+id             = "contract"
+bead           = "emoji-sound-notation-gnl.1"
+title          = "Define ESN interchange mapping and loss contract"
+parallel_start = false
+depends_on     = []
+summary        = "Define esn-interchange/1 mapping, MIDI representation, semantic cue metadata, loss reporting, and cue-sheet columns."
+
+[[cars]]
+id             = "midi"
+bead           = "emoji-sound-notation-gnl.2"
+title          = "Implement deterministic Standard MIDI File exporter"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Write deterministic SMF Type 1 with conductor and mapped source tracks."
+
+[[cars]]
+id             = "semantic_cues"
+bead           = "emoji-sound-notation-gnl.3"
+title          = "Preserve timed ESN semantics in MIDI cue metadata"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Represent every ESN event as a timed standard MIDI cue and produce machine-readable loss accounting."
+
+[[cars]]
+id             = "cue_sheet"
+bead           = "emoji-sound-notation-gnl.4"
+title          = "Implement production cue-sheet export"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Export deterministic CSV timing/semantic rows and expose cue download in the browser editor."
+
+[[cars]]
+id             = "qualify"
+bead           = "emoji-sound-notation-gnl.5"
+title          = "Qualify Beadtrain 4 end to end"
+parallel_start = false
+depends_on     = ["midi", "semantic_cues", "cue_sheet"]
+summary        = "Qualify MIDI, semantic preservation, cue-sheet output, browser integration, CI, and exact-state receipts."
+
+[meta]
+one_liner    = "Make ESN useful outside ESN without pretending MIDI can represent every sound."
+couples_with = []

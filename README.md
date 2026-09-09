@@ -2,53 +2,75 @@
 
 **Working project name.** The permanent product name is intentionally not frozen yet.
 
-Emoji Sound Notation (ESN) is a semantic visual language for music and sound. Sources identify what makes a sound, source-specific gestures identify what sound action occurs, X position represents time, Y position represents pitch when pitch exists, geometry represents duration/dynamics/trajectory, and color redundantly encodes pitch through a selected visual profile.
+Emoji Sound Notation (ESN) is a source-aware visual language for music and sound. It can place instruments, animal calls, weather, Foley, percussion, and other sound events on one timeline without forcing every sound to behave like a musical note.
 
-This is not conventional sheet music decorated with emoji. Unpitched sound is first-class, so rain, hisses, door slams, Foley, machinery, and environmental sound do not need invented notes.
+The customer-facing workflow is simple:
 
-## Beadtrain 1
+> Open → understand → add → edit → preview → save/open → hand off.
 
-The first product train establishes ESN-1 as an executable vertical slice:
+The browser editor uses plain-language source names, a lightweight reference synth for timing/pitch preview, editable scene title and tempo, and direct project/CSV/MIDI export.
+
+## Start it
+
+On Windows, double-click `START_ESN.cmd`.
+
+Cross-platform:
+
+```powershell
+python launch_esn.py
+```
+
+The launcher serves the correct repository root on localhost and opens the product landing page. The score stays local unless you explicitly export it.
+
+See [`docs/CONSUMER-AUDIT.md`](docs/CONSUMER-AUDIT.md) for the observed first-customer acceptance pass.
+
+## Beadtrain 1 — Semantic foundation
 
 - `esn/1` score semantics;
 - `esn-registry/1` source/gesture registries;
-- note and Hz pitch forms;
-- explicitly unpitched events;
+- note and Hz pitch forms plus explicitly unpitched events;
 - continuous pitch curves;
-- deterministic validator and canonicalizer;
-- deterministic standalone SVG semantic-score rendering;
-- mixed reference score covering music, animal vocalization, environment, Foley, and percussion.
+- deterministic validation/canonicalization;
+- deterministic standalone SVG semantic-score rendering.
 
 See [`docs/ESN-1.md`](docs/ESN-1.md).
 
-## Beadtrain 2
+## Beadtrain 2 — Playback and editor
 
-Beadtrain 2 makes the same semantic score audible and authorable without changing ESN-1:
-
-- `esn-playback/1` keeps synthesis and playback choices separate from sound meaning;
-- deterministic mono PCM WAV rendering covers oscillator, seeded noise, and impulse sources;
-- pitch curves and event dynamics drive playback;
-- the dependency-free browser editor adds, drags, edits, previews, deletes, and exports ESN events;
-- Web Audio provides live authoring preview while Python WAV rendering remains the deterministic conformance surface.
+- `esn-playback/1` keeps sound meaning separate from playback implementation;
+- deterministic mono PCM WAV rendering;
+- oscillator, seeded-noise, and impulse reference playback;
+- dependency-free browser editing, dragging, previewing, deleting, and exporting;
+- Web Audio for live sketch preview while Python WAV remains the deterministic conformance surface.
 
 See [`docs/PLAYBACK-EDITOR-1.md`](docs/PLAYBACK-EDITOR-1.md).
 
-## Beadtrain 3
+## Beadtrain 3 — Canonical visual language
 
-Beadtrain 3 adds a portable canonical visual binding without changing ESN-1 semantics:
-
-- `esn-visual/1` separates visual renderer choices from semantic source identity;
-- seven in-house SVG source glyphs replace vendor emoji artwork when the canonical visual profile is selected;
-- every canonical glyph is truly tintable into arbitrary pitch colorways;
-- `pitch_class` mode assigns one of 12 absolute colors;
-- `scale_degree` mode colors notes relative to a configurable tonic and scale interval set;
-- out-of-scale notes use an explicit chromatic fallback instead of pretending to be scale degrees;
-- unpitched events use an explicit unpitched color and stay in spectral lanes;
-- the browser editor switches visual modes live while preserving textual and positional accessibility cues.
+- `esn-visual/1` separates visual binding from sound semantics;
+- seven in-house tintable SVG source glyphs;
+- absolute pitch-class and relative scale-degree color modes;
+- explicit chromatic fallback and unpitched colors;
+- deterministic glyph sheets and visual SVG rendering;
+- browser color-mode switching with redundant text/position cues.
 
 See [`docs/VISUAL-1.md`](docs/VISUAL-1.md).
 
-## Run it
+## Beadtrain 4 — Loss-aware interchange and customer workflow
+
+- `esn-interchange/1` defines deterministic mapping into Standard MIDI Files;
+- playable pitched/percussion sources become MIDI notes where the mapping is meaningful;
+- every ESN event is also preserved as timed semantic cue metadata;
+- unmapped animal/environment/Foley events remain cue-only rather than being dropped or assigned fake instruments;
+- deterministic production cue-sheet CSV includes beats and real-time seconds;
+- browser and Python MIDI exporters are byte-identical for the reference score;
+- New/Open/Save project lifecycle, editable title/BPM, direct Cue sheet and MIDI buttons;
+- local customer launcher and customer-facing landing page;
+- consumer acceptance audit recorded in the repository.
+
+See [`docs/INTERCHANGE-1.md`](docs/INTERCHANGE-1.md).
+
+## CLI / conformance tools
 
 Python 3.11+ is sufficient; the core has no runtime dependencies.
 
@@ -56,17 +78,14 @@ Python 3.11+ is sufficient; the core has no runtime dependencies.
 python -m pip install -e .
 esn validate examples/first-score.esn.json --registry registries/core.json
 esn visual-validate --visual visual/core.json --registry registries/core.json
+esn interchange-validate --interchange interchange/core.json --registry registries/core.json
 esn render examples/first-score.esn.json --registry registries/core.json --visual visual/core.json --color-mode pitch_class -o examples/first-score.svg
-esn render examples/first-score.esn.json --registry registries/core.json --visual visual/core.json --color-mode scale_degree -o examples/first-score-degree.svg
-esn glyph-sheet --registry registries/core.json --visual visual/core.json -o examples/core-glyph-colorways.svg
 esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json -o examples/first-score.wav
+esn midi-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o examples/first-score.mid --report examples/first-score-midi-report.json
+esn cue-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o examples/first-score-cues.csv
 ```
 
 Run `python -m unittest discover -s tests -v` and `node --test tests/web_domain.test.js` for the executable regression suites.
-
-Serve the repository root with `python -m http.server 8000`, then open `/web/` for the score editor.
-
-Color is always redundant. Pitch remains recoverable through vertical position and text/accessibility descriptions, and source identity remains recoverable through source/gesture text even when custom glyphs are used.
 
 ## Semantic event
 
@@ -74,4 +93,8 @@ Color is always redundant. Pitch remains recoverable through vertical position a
 {"id":"cat-meow","source":"animal:cat","gesture":"meow","onset":1,"duration":1.5,"pitch":{"note":"E4"},"dynamics":0.82}
 ```
 
-The semantic registry decides that `animal:cat` means a cat source and which gestures are lawful. The playback registry decides how a renderer makes that event audible. The visual profile decides which portable canonical glyph and redundant pitch color represent it. None of those binding layers changes the underlying ESN event identity.
+The semantic registry decides what the event means. Playback decides how the reference renderer makes it audible. The visual profile decides which portable glyph/color represents it. The interchange profile decides what can become MIDI directly and what must remain a timed semantic cue.
+
+None of those binding layers changes the underlying ESN event identity.
+
+The reference synth is intentionally a sketching aid, not a realistic sample library. A future sound-pack layer can improve realism without rewriting ESN semantics.

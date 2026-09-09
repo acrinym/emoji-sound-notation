@@ -1,0 +1,11 @@
+{
+  "format": "esn-interchange/1",
+  "name": "ESN Core DAW Interchange",
+  "ticks_per_quarter": 480,
+  "cue_prefix": "ESN1:",
+  "midi_sources": [
+    {"source":"instrument:piano","mode":"pitched","channel":0,"program":0},
+    {"source":"instrument:bell","mode":"pitched","channel":1,"program":14},
+    {"source":"percussion:drum","mode":"fixed","channel":9,"note":36}
+  ]
+}
