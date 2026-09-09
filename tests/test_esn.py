@@ -58,6 +58,18 @@ class EsnFoundationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "strictly increase"):
             validate_score(score, self.registry)
 
+    def test_unknown_event_field_is_rejected(self) -> None:
+        score = copy.deepcopy(self.score)
+        score["events"][0]["mystery"] = 123
+        with self.assertRaisesRegex(ValidationError, "unknown fields"):
+            validate_score(score, self.registry)
+
+    def test_boolean_frequency_is_rejected(self) -> None:
+        score = copy.deepcopy(self.score)
+        score["events"][0]["pitch"] = {"hz": True}
+        with self.assertRaisesRegex(ValidationError, "exactly one"):
+            validate_score(score, self.registry)
+
 
 if __name__ == "__main__":
     unittest.main()

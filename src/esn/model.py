@@ -10,6 +10,10 @@ NOTE_RE = re.compile(r"^([A-Ga-g])([#b]?)(-?\d+)$")
 NOTE_OFFSETS = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 PITCH_POLICIES = {"required", "optional", "forbidden"}
 ARTICULATIONS = {"normal", "staccato", "tenuto", "accent", "legato"}
+REGISTRY_KEYS = {"format", "name", "sources"}
+REGISTRY_SOURCE_KEYS = {"id", "glyph", "class", "pitch_policy", "gestures"}
+SCORE_KEYS = {"format", "title", "tempo_bpm", "metadata", "events"}
+EVENT_KEYS = {"id", "source", "gesture", "onset", "duration", "pitch", "dynamics", "articulation", "pitch_curve"}
 
 
 class ValidationError(ValueError):
@@ -49,13 +53,16 @@ def hz_to_midi(hz: float) -> float:
 def pitch_to_midi(pitch: dict[str, Any]) -> float:
     if set(pitch) == {"note"} and isinstance(pitch["note"], str):
         return float(note_to_midi(pitch["note"]))
-    if set(pitch) == {"hz"} and isinstance(pitch["hz"], (int, float)):
+    if set(pitch) == {"hz"} and not isinstance(pitch["hz"], bool) and isinstance(pitch["hz"], (int, float)):
         return hz_to_midi(float(pitch["hz"]))
     raise ValidationError("pitch must contain exactly one of string 'note' or numeric 'hz'")
 
 
 def load_registry(path: str | Path) -> dict[str, dict[str, Any]]:
     data = load_json(path)
+    unknown_registry = set(data) - REGISTRY_KEYS
+    if unknown_registry:
+        raise ValidationError(f"registry contains unknown fields: {sorted(unknown_registry)}")
     if data.get("format") != "esn-registry/1":
         raise ValidationError("registry format must be 'esn-registry/1'")
     raw_sources = data.get("sources")
@@ -66,8 +73,12 @@ def load_registry(path: str | Path) -> dict[str, dict[str, Any]]:
         where = f"registry.sources[{index}]"
         if not isinstance(source, dict):
             raise ValidationError(f"{where} must be an object")
+        unknown_source = set(source) - REGISTRY_SOURCE_KEYS
+        if unknown_source:
+            raise ValidationError(f"{where} contains unknown fields: {sorted(unknown_source)}")
         source_id = source.get("id")
         glyph = source.get("glyph")
+        source_class = source.get("class")
         gestures = source.get("gestures")
         policy = source.get("pitch_policy", "optional")
         if not isinstance(source_id, str) or not source_id:
@@ -76,6 +87,8 @@ def load_registry(path: str | Path) -> dict[str, dict[str, Any]]:
             raise ValidationError(f"duplicate registry source id: {source_id}")
         if not isinstance(glyph, str) or not glyph:
             raise ValidationError(f"{where}.glyph must be a non-empty string")
+        if not isinstance(source_class, str) or not source_class:
+            raise ValidationError(f"{where}.class must be a non-empty string")
         if not isinstance(gestures, list) or not gestures or not all(isinstance(x, str) and x for x in gestures):
             raise ValidationError(f"{where}.gestures must be a non-empty string array")
         if len(set(gestures)) != len(gestures):
@@ -93,12 +106,19 @@ def _number(value: Any, label: str, *, minimum: float | None = None) -> float:
     if not math.isfinite(result) or (minimum is not None and result < minimum):
         raise ValidationError(f"{label} must be finite and >= {minimum}")
     return result
+
+
 def validate_score(data: dict[str, Any], registry: dict[str, dict[str, Any]]) -> None:
+    unknown_score = set(data) - SCORE_KEYS
+    if unknown_score:
+        raise ValidationError(f"score contains unknown fields: {sorted(unknown_score)}")
     if data.get("format") != "esn/1":
         raise ValidationError("score format must be 'esn/1'")
     if not isinstance(data.get("title"), str) or not data["title"]:
         raise ValidationError("score title must be a non-empty string")
     _number(data.get("tempo_bpm", 120), "tempo_bpm", minimum=1)
+    if "metadata" in data and not isinstance(data["metadata"], dict):
+        raise ValidationError("metadata must be an object")
     events = data.get("events")
     if not isinstance(events, list):
         raise ValidationError("events must be an array")
@@ -108,6 +128,9 @@ def validate_score(data: dict[str, Any], registry: dict[str, dict[str, Any]]) ->
         where = f"events[{index}]"
         if not isinstance(event, dict):
             raise ValidationError(f"{where} must be an object")
+        unknown_event = set(event) - EVENT_KEYS
+        if unknown_event:
+            raise ValidationError(f"{where} contains unknown fields: {sorted(unknown_event)}")
         event_id = event.get("id")
         if not isinstance(event_id, str) or not event_id:
             raise ValidationError(f"{where}.id must be a non-empty string")

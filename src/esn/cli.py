@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             Path(args.output).write_text(render_svg(score, registry), encoding="utf-8", newline="\n")
         return 0
-    except (OSError, ValueError, ValidationError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}")
         return 2
 

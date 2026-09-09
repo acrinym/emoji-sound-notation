@@ -20,6 +20,7 @@ The first product train establishes ESN-1 as an executable vertical slice:
 - mixed reference score covering music, animal vocalization, environment, Foley, and percussion.
 
 See [`docs/ESN-1.md`](docs/ESN-1.md).
+
 ## Run it
 
 Python 3.11+ is sufficient; the core has no runtime dependencies.

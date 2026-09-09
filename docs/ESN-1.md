@@ -23,6 +23,7 @@ Examples:
 The canonical visual interpretation uses X for time and Y for pitch. Pitched events occupy the pitch field. Events without pitch occupy explicit unpitched/spectral lanes rather than receiving invented notes.
 
 Color is redundant pitch encoding, never the sole carrier of pitch identity. Renderers must preserve a non-color cue such as vertical position, note/frequency label, pattern, or accessible description.
+
 ## 3. Source registry
 
 A source registry separates semantic identity from platform emoji rendering. Each source defines:
@@ -46,6 +47,7 @@ Required event fields are `id`, `source`, `gesture`, `onset`, and `duration`.
 - `articulation` is optional: `normal`, `staccato`, `tenuto`, `accent`, or `legato`.
 - `pitch` is optional at the format level but constrained by the source's pitch policy.
 - `pitch_curve` is optional and defines a continuous semantic trajectory through normalized event time.
+
 ## 5. Pitch
 
 A pitch object contains exactly one representation:
@@ -69,6 +71,7 @@ A `pitch_curve` is an ordered array of `{at, pitch}` points. `at` is strictly in
 The ESN-1 reference renderer uses a 12-step absolute pitch-class palette. Color belongs to the pitch class, not the sound source. Therefore a cat meowing C4 and a piano playing C4 receive the same pitch-class cue while retaining distinct glyph/source identity.
 
 Future modes may encode relative scale degree instead of absolute pitch class. That mode is intentionally not canonicalized in ESN-1 because key/scale semantics need their own contract.
+
 ## 7. Visual redundancy and accessibility
 
 A compliant renderer must not make hue the only way to recover pitch. The reference renderer redundantly exposes pitch through vertical location, textual note/frequency labeling, and accessible SVG descriptions. Source glyph identity is accompanied by source/gesture text.
