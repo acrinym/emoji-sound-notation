@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "emoji_sound_notation",
+  "project_id": "6e211584-1a57-49cd-89fc-675acdab68a3"
+}
