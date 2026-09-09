@@ -10,6 +10,8 @@ const state = {
   score: null,
   registryDoc: null,
   playbackDoc: null,
+  visualDoc: null,
+  colorMode: "pitch_class",
   sources: new Map(),
   profiles: new Map(),
   selectedId: null,
@@ -18,21 +20,25 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 const {noteToMidi, midiToNote} = EsnDomain;
+const {colorCueForMidi, glyphSvg} = EsnVisualDomain;
 
 async function loadBundled() {
-  const [score, registryDoc, playbackDoc] = await Promise.all([
+  const [score, registryDoc, playbackDoc, visualDoc] = await Promise.all([
     fetch("../examples/first-score.esn.json").then(r => r.json()),
     fetch("../registries/core.json").then(r => r.json()),
     fetch("../playback/core.json").then(r => r.json()),
+    fetch("../visual/core.json").then(r => r.json()),
   ]);
   state.score = structuredClone(score);
   state.registryDoc = registryDoc;
   state.playbackDoc = playbackDoc;
+  state.visualDoc = visualDoc;
+  state.colorMode = visualDoc.default_mode;
   state.sources = new Map(registryDoc.sources.map(source => [source.id, source]));
   state.profiles = new Map(playbackDoc.profiles.map(profile => [`${profile.source}/${profile.gesture}`, profile]));
   state.selectedId = null;
   renderAll();
-  status(`Loaded ${score.events.length} events at ${score.tempo_bpm} BPM.`);
+  status(`Loaded ${score.events.length} events at ${score.tempo_bpm} BPM with ${visualDoc.name}.`);
 }
 
 function sourceFor(event) {
@@ -51,10 +57,14 @@ function pitchMidi(event) {
   return null;
 }
 
-function pitchColor(midi) {
-  const colors = ["#e74c3c","#e67e22","#c9a900","#7cae21","#22a95b","#149c8d",
-                  "#0088aa","#3277c9","#5668d8","#8640a4","#ae36c1","#d43a83"];
-  return colors[((Math.round(midi) % 12) + 12) % 12];
+function eventColor(event) {
+  const midi = pitchMidi(event);
+  if (midi === null) return state.visualDoc.palettes.unpitched;
+  return colorCueForMidi(state.visualDoc, midi, state.colorMode).color;
+}
+
+function sourceGlyph(sourceId, color, size = 22) {
+  return glyphSvg(state.visualDoc, sourceId, color, size);
 }
 
 function maxEnd() {
@@ -69,10 +79,19 @@ function eventTop(event) {
 }
 
 function renderAll() {
+  renderVisualMode();
   renderPalette();
   renderRuler();
   renderTimeline();
   renderInspector();
+}
+
+function renderVisualMode() {
+  $("color-mode").value = state.colorMode;
+  const mode = state.colorMode === "pitch_class"
+    ? "absolute pitch class"
+    : `relative scale degree · tonic ${state.visualDoc.scale.tonic}`;
+  $("color-legend").textContent = `color: ${mode}`;
 }
 
 function renderPalette() {
@@ -81,7 +100,7 @@ function renderPalette() {
   for (const source of state.registryDoc.sources) {
     const group = document.createElement("div");
     group.className = "source-group";
-    group.innerHTML = `<div class="source-name">${source.glyph} ${source.id}</div>`;
+    group.innerHTML = `<div class="source-name">${sourceGlyph(source.id, state.visualDoc.palettes.unpitched, 22)}<span>${source.id}</span></div>`;
     const gestures = document.createElement("div");
     gestures.className = "gesture-list";
     for (const gesture of source.gestures) {
@@ -144,8 +163,10 @@ function renderTimeline() {
     chip.style.top = `${eventTop(event)}px`;
     chip.style.width = `${Math.max(38, Number(event.duration) * PX_PER_BEAT)}px`;
     const midi = pitchMidi(event);
-    chip.style.color = midi === null ? "#343947" : pitchColor(midi);
-    chip.innerHTML = `<span class="glyph">${source.glyph}</span><span class="meta">${event.gesture}${event.pitch?.note ? ` · ${event.pitch.note}` : ""}</span>`;
+    const color = eventColor(event);
+    const cue = midi === null ? "unpitched" : colorCueForMidi(state.visualDoc, midi, state.colorMode).label;
+    chip.style.color = color;
+    chip.innerHTML = `<span class="glyph">${sourceGlyph(event.source, color, 22)}</span><span class="meta">${event.gesture}${event.pitch?.note ? ` · ${event.pitch.note}` : ""} · ${cue}</span>`;
     chip.addEventListener("click", e => {
       e.stopPropagation();
       state.selectedId = event.id;
@@ -206,7 +227,7 @@ function addEvent(source, gesture) {
   state.score.events.push(event);
   state.selectedId = event.id;
   renderAll();
-  status(`Added ${source.glyph} ${gesture}.`);
+  status(`Added ${source.id} ${gesture}.`);
 }
 
 function selectedEvent() {
@@ -340,6 +361,11 @@ function status(message) {
 for (const id of ["event-gesture","event-onset","event-duration","event-pitch","event-dynamics"]) {
   $(id).addEventListener("change", commitInspector);
 }
+$("color-mode").addEventListener("change", event => {
+  state.colorMode = event.target.value;
+  renderAll();
+  status(`Visual color mode: ${state.colorMode}.`);
+});
 $("reload").addEventListener("click", loadBundled);
 $("play-score").addEventListener("click", playScore);
 $("export").addEventListener("click", exportScore);

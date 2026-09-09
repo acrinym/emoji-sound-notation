@@ -1,0 +1,54 @@
+[train]
+name        = "beadtrain_3_visual_glyph_color"
+title       = "Beadtrain 3 - Canonical glyphs and color semantics"
+description = """
+Add a portable tintable visual layer with custom canonical source glyphs and dual pitch coloration while preserving ESN-1 semantic identity and redundant non-color cues.
+"""
+created     = "2026-09-09"
+status      = "in_progress"
+
+[[cars]]
+id             = "contract"
+bead           = "emoji-sound-notation-7gx.1"
+title          = "Define ESN visual binding contract"
+parallel_start = false
+depends_on     = []
+summary        = "Specify esn-visual/1 palettes, canonical glyph bindings, scale context, validation, and accessibility rules."
+
+[[cars]]
+id             = "glyphs"
+bead           = "emoji-sound-notation-7gx.2"
+title          = "Implement canonical tintable glyph engine"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Implement portable source glyph geometry and deterministic tintable SVG glyph rendering."
+
+[[cars]]
+id             = "colors"
+bead           = "emoji-sound-notation-7gx.3"
+title          = "Implement dual pitch color semantics"
+parallel_start = true
+depends_on     = ["contract"]
+summary        = "Implement absolute pitch-class and relative scale-degree color modes with chromatic fallback."
+
+[[cars]]
+id             = "editor"
+bead           = "emoji-sound-notation-7gx.4"
+title          = "Integrate visual modes into browser editor"
+parallel_start = false
+depends_on     = ["glyphs", "colors"]
+summary        = "Load esn-visual/1 in the browser editor and render canonical glyphs with switchable color semantics."
+
+[[cars]]
+id             = "qualify"
+bead           = "emoji-sound-notation-7gx.5"
+title          = "Qualify Beadtrain 3 end to end"
+parallel_start = false
+depends_on     = ["glyphs", "colors", "editor"]
+summary        = "Run Python/Node/visual gates, prove deterministic artifacts, and capture exact-state receipts."
+
+[meta]
+one_liner = "Portable custom glyphs plus pitch-class and scale-degree color semantics."
+prior_car = "beadtrain_2_playback_editor"
+watch = "Color must remain redundant; visual bindings must not mutate ESN-1 semantic identity."
+couples_with = []

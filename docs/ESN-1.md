@@ -70,13 +70,13 @@ A `pitch_curve` is an ordered array of `{at, pitch}` points. `at` is strictly in
 
 The ESN-1 reference renderer uses a 12-step absolute pitch-class palette. Color belongs to the pitch class, not the sound source. Therefore a cat meowing C4 and a piano playing C4 receive the same pitch-class cue while retaining distinct glyph/source identity.
 
-Future modes may encode relative scale degree instead of absolute pitch class. That mode is intentionally not canonicalized in ESN-1 because key/scale semantics need their own contract.
+Relative scale-degree coloration remains intentionally outside ESN-1. It is now specified by `esn-visual/1`, where tonic and scale intervals are renderer context rather than score semantics. This keeps transposable color meaning out of the canonical event format.
 
 ## 7. Visual redundancy and accessibility
 
 A compliant renderer must not make hue the only way to recover pitch. The reference renderer redundantly exposes pitch through vertical location, textual note/frequency labeling, and accessible SVG descriptions. Source glyph identity is accompanied by source/gesture text.
 
-Platform emoji art is presentation, not semantic authority. A renderer may use system emoji, custom canonical glyphs, recolored variants, halos, outlines, or plates as long as the underlying source identity remains unchanged.
+Platform emoji art is presentation, not semantic authority. Beadtrain 3 adds `esn-visual/1` with portable in-house SVG source glyphs that can be truly tinted without vendor artwork. Renderers may still use system emoji as fallback as long as underlying source identity remains unchanged.
 
 ## 8. Canonicalization
 
@@ -95,4 +95,4 @@ Beadtrain 1 proves:
 5. redundant pitch visualization;
 6. deterministic validation, canonicalization, and SVG rendering.
 
-Audio sample binding, MIDI export, custom recolored emoji assets, relative-scale coloration, notation editing UI, tempo maps, polyphonic source instances, articulation registries, and executable playback are later trains.
+Later binding trains now provide executable playback (`esn-playback/1`), browser notation editing, portable custom tintable glyphs, and relative scale-degree coloration (`esn-visual/1`) without changing ESN-1. MIDI/MusicXML interchange, tempo maps, polyphonic source instances, richer articulation registries, sample-pack distribution, and collaboration remain future work.

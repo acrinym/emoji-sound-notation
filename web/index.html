@@ -10,9 +10,15 @@
   <header>
     <div>
       <h1>Emoji Sound Notation</h1>
-      <p>Beadtrain 2 editor · source + gesture + time + optional pitch</p>
+      <p>Beadtrain 3 editor · semantic sound + playable bindings + canonical tintable glyphs</p>
     </div>
     <div class="toolbar">
+      <label class="mode-control">Color
+        <select id="color-mode">
+          <option value="pitch_class">Pitch class</option>
+          <option value="scale_degree">Scale degree</option>
+        </select>
+      </label>
       <button id="reload">Reload example</button>
       <button id="play-score">▶ Play score</button>
       <button id="export">Export ESN</button>
@@ -22,7 +28,7 @@
   <main>
     <aside class="panel palette-panel">
       <h2>Sound palette</h2>
-      <p class="hint">Pick a source, then add its sound gesture.</p>
+      <p class="hint">Pick a canonical source glyph, then add its sound gesture.</p>
       <div id="palette"></div>
     </aside>
 
@@ -32,7 +38,8 @@
       <div class="legend">
         <span>↔ time</span>
         <span>↕ pitch</span>
-        <span>drag events to move them</span>
+        <span id="color-legend">color: absolute pitch class</span>
+        <span>custom SVG glyph = source identity</span>
         <span>unpitched sounds stay in lanes</span>
       </div>
     </section>
@@ -58,6 +65,7 @@
   </main>
 
   <script src="esn-domain.js"></script>
+  <script src="visual-domain.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>
