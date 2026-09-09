@@ -5,7 +5,7 @@ description = """
 Add a portable tintable visual layer with custom canonical source glyphs and dual pitch coloration while preserving ESN-1 semantic identity and redundant non-color cues.
 """
 created     = "2026-09-09"
-status      = "in_progress"
+status      = "complete"
 
 [[cars]]
 id             = "contract"
