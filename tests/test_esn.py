@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +31,16 @@ class EsnFoundationTests(unittest.TestCase):
         first = canonical_json(self.score)
         second = canonical_json(load_json(ROOT / "examples" / "first-score.esn.json"))
         self.assertEqual(first, second)
+
+    def test_non_finite_json_numbers_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "non-finite.esn.json"
+            path.write_text('{"format":"esn/1","title":"bad","metadata":{"value":NaN},"events":[]}', encoding="utf-8")
+            with self.assertRaisesRegex(ValidationError, "non-finite JSON number"):
+                load_json(path)
+        with self.assertRaises(ValueError):
+            canonical_json({"value": math.inf})
+
     def test_renderer_is_deterministic_and_semantic(self) -> None:
         validate_score(self.score, self.registry)
         first = render_svg(self.score, self.registry)
