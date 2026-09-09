@@ -20,9 +20,13 @@ class ValidationError(ValueError):
     """Raised when an ESN document violates the semantic contract."""
 
 
+def _reject_non_finite(value: str) -> None:
+    raise ValidationError(f"non-finite JSON number is not allowed: {value}")
+
+
 def load_json(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as handle:
-        value = json.load(handle)
+        value = json.load(handle, parse_constant=_reject_non_finite)
     if not isinstance(value, dict):
         raise ValidationError("document root must be an object")
     return value
@@ -184,4 +188,4 @@ def validate_score(data: dict[str, Any], registry: dict[str, dict[str, Any]]) ->
 
 
 def canonical_json(data: dict[str, Any]) -> str:
-    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    return json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n"
