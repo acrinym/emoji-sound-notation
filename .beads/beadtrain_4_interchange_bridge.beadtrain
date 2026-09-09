@@ -5,7 +5,7 @@ description = """
 Bridge ESN into MIDI and production cue-sheet workflows without silently dropping semantic events that MIDI cannot represent.
 """
 created     = "2026-09-09"
-status      = "in_progress"
+status      = "complete"
 
 [[cars]]
 id             = "contract"
