@@ -5,7 +5,7 @@ description = """
 Make ESN audible and authorable while preserving ESN-1 as the semantic authority and keeping playback bindings separate.
 """
 created     = "2026-09-08"
-status      = "in_progress"
+status      = "complete"
 
 [[cars]]
 id             = "contract"
