@@ -9,6 +9,7 @@ from .interchange import (
 from .model import ValidationError, canonical_json, load_json, load_registry, validate_score
 from .playback import load_playback_registry, write_wav
 from .render import render_svg
+from .score import document_rows, validate_document
 from .soundpack import load_sound_pack
 from .visual import COLOR_MODES, load_visual_profile, render_glyph_sheet
 
@@ -90,9 +91,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         score = load_json(args.score)
-        validate_score(score, registry)
+        validate_document(score, registry)
         if args.command == "validate":
-            print(f"valid esn/1: {len(score['events'])} events")
+            if score.get("format") == "esn/2":
+                print(f"valid esn/2: {len(score['tracks'])} tracks, {len(document_rows(score, registry))} realized events")
+            else:
+                print(f"valid esn/1: {len(score['events'])} events")
         elif args.command == "canonicalize":
             Path(args.output).write_text(canonical_json(score), encoding="utf-8", newline="\n")
         elif args.command == "render":
@@ -116,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             interchange = load_interchange_profile(args.interchange, registry)
             write_cue_sheet(args.output, score, registry, interchange)
-            print(f"cue sheet: {len(score['events'])} events")
+            print(f"cue sheet: {len(document_rows(score, registry))} realized events")
         return 0
     except (OSError, ValueError, ValidationError) as exc:
         print(f"error: {exc}")

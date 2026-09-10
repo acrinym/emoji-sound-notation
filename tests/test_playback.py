@@ -10,6 +10,7 @@ from pathlib import Path
 from esn.cli import main
 from esn.model import ValidationError, load_json, load_registry
 from esn.playback import load_playback_registry, render_wav, resolve_profile
+from esn.score import migrate_v1_to_v2
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,6 +48,19 @@ class PlaybackTests(unittest.TestCase):
         del cat["pitch_curve"]
         straight = render_wav(altered, self.sources, self.playback)
         self.assertNotEqual(curved, straight)
+
+    def test_esn2_tuning_changes_pitched_playback_without_changing_note_identity(self) -> None:
+        score_432 = migrate_v1_to_v2(self.score, self.sources)
+        score_444 = copy.deepcopy(score_432)
+        score_444["defaults"]["tuning"] = {"a4_hz": 444.0}
+        self.assertEqual(
+            score_432["tracks"][0]["sections"][0]["objects"][0].get("pitch"),
+            score_444["tracks"][0]["sections"][0]["objects"][0].get("pitch"),
+        )
+        self.assertNotEqual(
+            render_wav(score_432, self.sources, self.playback),
+            render_wav(score_444, self.sources, self.playback),
+        )
 
     def test_missing_profile_is_rejected(self) -> None:
         broken = dict(self.playback)

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/esn/esn-2.schema.json",
+  "title": "Emoji Sound Notation ESN-2",
+  "type": "object",
+  "required": ["format", "title", "length_ticks", "defaults", "tracks"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "esn/2"},
+    "title": {"type": "string", "minLength": 1},
+    "length_ticks": {"type": "integer", "minimum": 1},
+    "defaults": {"$ref": "#/$defs/fullContext"},
+    "metadata": {"type": "object"},
+    "tracks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/track"}}
+  },
+  "$defs": {
+    "timeSignature": {
+      "type": "object", "required": ["numerator", "denominator"], "additionalProperties": false,
+      "properties": {"numerator": {"type": "integer", "minimum": 1}, "denominator": {"enum": [1,2,4,8,16,32,64]}}
+    },
+    "key": {
+      "type": "object", "required": ["tonic", "scale"], "additionalProperties": false,
+      "properties": {"tonic": {"type": "string", "pattern": "^[A-G](#|b)?$"}, "scale": {"enum": ["major","minor","major_pentatonic","minor_pentatonic","chromatic"]}}
+    },
+    "tuning": {"type": "object", "required": ["a4_hz"], "additionalProperties": false, "properties": {"a4_hz": {"type": "number", "exclusiveMinimum": 0}}},
+    "partialContext": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "tempo_bpm": {"type": "number", "exclusiveMinimum": 0},
+        "time_signature": {"$ref": "#/$defs/timeSignature"},
+        "key": {"$ref": "#/$defs/key"},
+        "tuning": {"$ref": "#/$defs/tuning"}
+      }
+    },
+    "fullContext": {
+      "allOf": [
+        {"$ref": "#/$defs/partialContext"},
+        {"required": ["tempo_bpm", "time_signature", "key", "tuning"]}
+      ]
+    },
+    "pitch": {
+      "oneOf": [
+        {"type":"object","required":["note"],"additionalProperties":false,"properties":{"note":{"type":"string","pattern":"^[A-Ga-g][#b]?-?[0-9]+$"}}},
+        {"type":"object","required":["hz"],"additionalProperties":false,"properties":{"hz":{"type":"number","exclusiveMinimum":0}}}
+      ]
+    },
+    "curvePoint": {
+      "type": "object", "required": ["at", "pitch"], "additionalProperties": false,
+      "properties": {"at": {"type":"number","minimum":0,"maximum":1}, "pitch": {"$ref":"#/$defs/pitch"}}
+    },
+    "commonObject": {
+      "type": "object",
+      "required": ["id", "type", "gesture", "tick", "duration_ticks"],
+      "properties": {
+        "id": {"type":"string","minLength":1}, "type": {"enum":["note","event","chord"]},
+        "gesture": {"type":"string","minLength":1}, "tick": {"type":"integer","minimum":0},
+        "duration_ticks": {"type":"integer","minimum":1}, "dynamics": {"type":"number","minimum":0,"maximum":1},
+        "articulation": {"enum":["normal","staccato","tenuto","accent","legato"]}
+      }
+    },
+    "noteEvent": {
+      "allOf": [
+        {"$ref":"#/$defs/commonObject"},
+        {"type":"object","additionalProperties":false,
+         "properties": {"id":{},"type":{"enum":["note","event"]},"gesture":{},"tick":{},"duration_ticks":{},"dynamics":{},"articulation":{},"pitch":{"$ref":"#/$defs/pitch"},"pitch_curve":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/curvePoint"}}}}
+      ]
+    },
+    "chord": {
+      "allOf": [
+        {"$ref":"#/$defs/commonObject"},
+        {"type":"object","required":["root","quality"],"additionalProperties":false,
+         "properties":{"id":{},"type":{"const":"chord"},"gesture":{},"tick":{},"duration_ticks":{},"dynamics":{},"articulation":{},"root":{"type":"string"},"quality":{"type":"string"},"inversion":{"type":"integer","minimum":0},"voicing":{"enum":["close","open"]},"arpeggiation":{"type":"object","required":["direction","step_ticks"],"additionalProperties":false,"properties":{"direction":{"enum":["up","down"]},"step_ticks":{"type":"integer","minimum":0}}}}}
+      ]
+    },
+    "section": {
+      "type":"object","required":["id","start_tick","end_tick","source","objects"],"additionalProperties":false,
+      "properties":{"id":{"type":"string","minLength":1},"start_tick":{"type":"integer","minimum":0},"end_tick":{"type":"integer","minimum":1},"source":{"type":"string","minLength":1},"context":{"$ref":"#/$defs/partialContext"},"objects":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/noteEvent"},{"$ref":"#/$defs/chord"}]}}}
+    },
+    "track": {
+      "type":"object","required":["id","name","sections"],"additionalProperties":false,
+      "properties":{"id":{"type":"string","minLength":1},"name":{"type":"string","minLength":1},"context":{"$ref":"#/$defs/partialContext"},"sections":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/section"}}}
+    }
+  }
+}

@@ -13,6 +13,7 @@ from esn.interchange import (
     canonical_report, cue_sheet_csv, export_smf, load_interchange_profile,
 )
 from esn.model import ValidationError, load_json, load_registry
+from esn.score import TICKS_PER_QUARTER, migrate_v1_to_v2
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY_PATH = ROOT / "registries" / "core.json"
@@ -172,6 +173,21 @@ class InterchangeTests(unittest.TestCase):
         rows = {row["id"]: row for row in csv.DictReader(io.StringIO(cue_sheet_csv(score, self.registry, self.profile)))}
         self.assertEqual(rows["second"]["midi_channel"], "3")
         self.assertIn("overlap_channel_reassigned", rows["second"]["midi_status"])
+
+    def test_esn2_interchange_preserves_absolute_timing_and_reports_structure_loss(self) -> None:
+        score = migrate_v1_to_v2(self.score, self.registry)
+        piano_track = next(track for track in score["tracks"] if track["sections"][0]["source"] == "instrument:piano")
+        piano_track["context"] = {"tempo_bpm": 120}
+        midi, report = export_smf(score, self.registry, self.profile)
+        self.assertTrue(midi.startswith(b"MThd"))
+        self.assertEqual(report["source_format"], "esn/2")
+        self.assertIn("track_section_structure_flattened", report["score_losses"])
+        piano = next(row for row in report["events"] if row["id"] == "piano-c4")
+        self.assertEqual(piano["track_id"], piano_track["id"])
+        rows = {row["id"]: row for row in csv.DictReader(io.StringIO(cue_sheet_csv(score, self.registry, self.profile)))}
+        self.assertEqual(rows["piano-c4"]["start_seconds"], "0.000000")
+        self.assertEqual(rows["piano-c4"]["duration_seconds"], "0.500000")
+        self.assertTrue(rows["cat-meow"]["track_id"].startswith("track-"))
 
     def test_cli_exports_midi_report_and_cue_sheet(self) -> None:
         import subprocess, sys

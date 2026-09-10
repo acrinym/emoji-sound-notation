@@ -4,6 +4,7 @@ from html import escape
 from typing import Any
 
 from .model import pitch_to_midi
+from .score import TICKS_PER_QUARTER, document_rows
 from .visual import color_cue_for_midi, glyph_svg
 
 PITCH_COLORS = [
@@ -26,7 +27,7 @@ def _event_midis(event: dict[str, Any]) -> list[float]:
     return values
 
 
-def render_svg(
+def _render_svg_v1(
     score: dict[str, Any],
     registry: dict[str, dict[str, Any]],
     visual: dict[str, Any] | None = None,
@@ -143,3 +144,26 @@ def render_svg(
     parts.append(f'<text x="24" y="{unpitched_top - 23:.1f}" font-family="sans-serif" font-size="11" font-weight="700">UNPITCHED / SPECTRAL EVENTS</text>')
     parts.append('</svg>')
     return "\n".join(parts) + "\n"
+
+
+def render_svg(
+    score: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+    visual: dict[str, Any] | None = None,
+    color_mode: str | None = None,
+) -> str:
+    if score.get("format") != "esn/2":
+        return _render_svg_v1(score, registry, visual=visual, color_mode=color_mode)
+    rows = document_rows(score, registry)
+    events = []
+    for row in rows:
+        event = dict(row["event"])
+        event["onset"] = row["tick"] / TICKS_PER_QUARTER
+        event["duration"] = row["duration_ticks"] / TICKS_PER_QUARTER
+        events.append(event)
+    flattened = {
+        "format": "esn/1", "title": score["title"],
+        "tempo_bpm": score["defaults"]["tempo_bpm"], "events": events,
+    }
+    svg = _render_svg_v1(flattened, registry, visual=visual, color_mode=color_mode)
+    return svg.replace("ESN/1 · X=time", "ESN/2 · flattened score view · X=musical time", 1)

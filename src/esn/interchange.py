@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .model import ValidationError, load_json, pitch_to_midi, validate_score
+from .score import TICKS_PER_QUARTER, document_rows, validate_document
 
 PROFILE_KEYS = {"format", "name", "ticks_per_quarter", "cue_prefix", "midi_sources"}
 MAPPING_KEYS = {"source", "mode", "channel", "program", "note"}
@@ -182,7 +183,7 @@ def _midi_plan(score: dict[str, Any], profile: dict[str, Any]) -> dict[str, dict
         }
     return plan
 
-def export_smf(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
+def _export_smf_v1(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
     validate_score(score, registry)
     tpq = profile["ticks_per_quarter"]
     tempo_bpm = float(score.get("tempo_bpm", 120))
@@ -241,7 +242,7 @@ def write_smf(path: str | Path, score: dict[str, Any], registry: dict[str, dict[
     Path(path).write_bytes(payload)
     return report
 
-def cue_sheet_csv(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> str:
+def _cue_sheet_csv_v1(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> str:
     validate_score(score, registry)
     tempo = float(score.get("tempo_bpm", 120))
     beat_seconds = 60.0 / tempo
@@ -291,3 +292,84 @@ def write_cue_sheet(path: str | Path, score: dict[str, Any], registry: dict[str,
 
 def canonical_report(report: dict[str, Any]) -> str:
     return json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n"
+
+
+def _v2_interchange_view(score: dict[str, Any], registry: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    validate_document(score, registry)
+    rows = document_rows(score, registry)
+    conductor_tempo = float(score["defaults"]["tempo_bpm"])
+    conductor_beat_seconds = 60.0 / conductor_tempo
+    events = []
+    for row in rows:
+        event = dict(row["event"])
+        event["onset"] = row["onset_seconds"] / conductor_beat_seconds
+        event["duration"] = row["duration_seconds"] / conductor_beat_seconds
+        events.append(event)
+    return {
+        "format": "esn/1", "title": score["title"],
+        "tempo_bpm": conductor_tempo, "events": events,
+    }, rows
+
+
+def export_smf(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
+    if score.get("format") != "esn/2":
+        return _export_smf_v1(score, registry, profile)
+    interchange_score, rows = _v2_interchange_view(score, registry)
+    payload, report = _export_smf_v1(interchange_score, registry, profile)
+    row_by_id = {row["event"]["id"]: row for row in rows}
+    for event_report in report["events"]:
+        row = row_by_id[event_report["id"]]
+        event_report.update({
+            "track_id": row["track_id"], "section_id": row["section_id"],
+            "object_id": row["object_id"], "object_type": row["object_type"],
+        })
+    report["source_format"] = "esn/2"
+    report["score_losses"] = ["track_section_structure_flattened", "track_local_musical_context_flattened"]
+    return payload, report
+
+
+def cue_sheet_csv(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> str:
+    if score.get("format") != "esn/2":
+        return _cue_sheet_csv_v1(score, registry, profile)
+    interchange_score, rows = _v2_interchange_view(score, registry)
+    plan = _midi_plan(interchange_score, profile)
+    fieldnames = [
+        "track_id", "section_id", "object_id", "object_type",
+        "id", "source", "gesture", "onset_beats", "end_beats",
+        "start_seconds", "end_seconds", "duration_seconds", "pitch",
+        "dynamics", "articulation", "midi_status", "midi_channel", "midi_note",
+    ]
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in sorted(rows, key=lambda item: (item["onset_seconds"], item["track_id"], item["event"]["id"])):
+        event = row["event"]
+        planned = plan[event["id"]]
+        mapping, note, losses, channel = planned["mapping"], planned["note"], planned["losses"], planned["channel"]
+        if note is not None and channel is not None:
+            midi_status = "midi_note" + (":" + "+".join(losses) if losses else "")
+        elif "same_note_overlap_cue_only" in losses:
+            midi_status = "cue_only:same_note_overlap_cue_only"
+        else:
+            midi_status = losses[0] if losses else "cue_only"
+        pitch = ""
+        if "pitch" in event:
+            key, value = next(iter(event["pitch"].items()))
+            pitch = f"{key}:{value}"
+        onset_beats = row["tick"] / TICKS_PER_QUARTER
+        duration_beats = row["duration_ticks"] / TICKS_PER_QUARTER
+        writer.writerow({
+            "track_id": row["track_id"], "section_id": row["section_id"],
+            "object_id": row["object_id"], "object_type": row["object_type"],
+            "id": event["id"], "source": event["source"], "gesture": event["gesture"],
+            "onset_beats": f"{onset_beats:g}", "end_beats": f"{onset_beats + duration_beats:g}",
+            "start_seconds": f"{row['onset_seconds']:.6f}",
+            "end_seconds": f"{row['onset_seconds'] + row['duration_seconds']:.6f}",
+            "duration_seconds": f"{row['duration_seconds']:.6f}", "pitch": pitch,
+            "dynamics": f"{float(event.get('dynamics', 0.75)):g}",
+            "articulation": event.get("articulation", "normal"),
+            "midi_status": midi_status,
+            "midi_channel": "" if mapping is None else str((int(mapping["channel"]) if channel is None else channel) + 1),
+            "midi_note": "" if note is None else str(note),
+        })
+    return output.getvalue()
