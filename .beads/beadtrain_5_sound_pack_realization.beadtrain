@@ -5,7 +5,7 @@ description = """
 Make ESN sound scenes useful with recorded/local samples while preserving semantic event identity and a safe reference-synth fallback.
 """
 created     = "2026-09-09"
-status      = "in_progress"
+status      = "complete"
 
 [[cars]]
 id             = "contract"
