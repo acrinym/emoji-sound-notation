@@ -70,6 +70,19 @@ See [`docs/VISUAL-1.md`](docs/VISUAL-1.md).
 
 See [`docs/INTERCHANGE-1.md`](docs/INTERCHANGE-1.md).
 
+## Beadtrain 5 — Swappable sound realization
+
+- `esn-sound-pack/1` binds semantic source/action pairs to local WAV assets without modifying `esn/1`;
+- exact action bindings and source-wide `*` fallbacks are supported;
+- missing or unusable sample assets fall back to the deterministic reference synth instead of losing the event;
+- optional root-pitch and looping controls let samples follow pitched events or fill long environmental events;
+- browser users can load a licensed pack folder or attach their own WAV to a source/action for the current session;
+- pack creator/license/provenance are visible in the editor;
+- Save/New/Open preserve the semantic score independently from realization choice;
+- Python sample-backed rendering remains deterministic for offline conformance.
+
+See [`docs/SOUND-PACK-1.md`](docs/SOUND-PACK-1.md).
+
 ## CLI / conformance tools
 
 Python 3.11+ is sufficient; the core has no runtime dependencies.
@@ -79,8 +92,10 @@ python -m pip install -e .
 esn validate examples/first-score.esn.json --registry registries/core.json
 esn visual-validate --visual visual/core.json --registry registries/core.json
 esn interchange-validate --interchange interchange/core.json --registry registries/core.json
+esn sound-pack-validate --sound-pack soundpacks/reference.json --registry registries/core.json
 esn render examples/first-score.esn.json --registry registries/core.json --visual visual/core.json --color-mode pitch_class -o examples/first-score.svg
 esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json -o examples/first-score.wav
+esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json --sound-pack path/to/pack.json -o sample-backed.wav
 esn midi-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o examples/first-score.mid --report examples/first-score-midi-report.json
 esn cue-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o examples/first-score-cues.csv
 ```
@@ -97,4 +112,4 @@ The semantic registry decides what the event means. Playback decides how the ref
 
 None of those binding layers changes the underlying ESN event identity.
 
-The reference synth is intentionally a sketching aid, not a realistic sample library. A future sound-pack layer can improve realism without rewriting ESN semantics.
+The reference synth remains the built-in sketching fallback. Sound packs and local WAV overrides can now improve or stylize realization without rewriting ESN semantics.

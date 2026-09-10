@@ -12,30 +12,43 @@ const state = {
   playbackDoc: null,
   visualDoc: null,
   interchangeDoc: null,
+  soundPackDoc: null,
+  referenceSoundPackDoc: null,
+  soundPackManifestPath: "",
+  soundPackFiles: new Map(),
+  localSamples: new Map(),
+  sampleBuffers: new Map(),
   colorMode: "pitch_class",
   sources: new Map(),
   profiles: new Map(),
   selectedId: null,
   audio: null,
+  ignoreTimelineClick: false,
 };
 
 const $ = (id) => document.getElementById(id);
 const {noteToMidi, midiToNote} = EsnDomain;
 const {colorCueForMidi, glyphSvg} = EsnVisualDomain;
 const {cueCsv, midiBytes} = EsnInterchangeDomain;
+const {validatePack, resolveBinding, fileKeyFor, describePack} = EsnSoundPackDomain;
 
 async function loadBundled() {
-  const [score, registryDoc, playbackDoc, visualDoc, interchangeDoc] = await Promise.all([
+  const [score, registryDoc, playbackDoc, visualDoc, interchangeDoc, soundPackDoc] = await Promise.all([
     fetch("../examples/first-score.esn.json").then(r => r.json()),
     fetch("../registries/core.json").then(r => r.json()),
     fetch("../playback/core.json").then(r => r.json()),
     fetch("../visual/core.json").then(r => r.json()),
     fetch("../interchange/core.json").then(r => r.json()),
+    fetch("../soundpacks/reference.json").then(r => r.json()),
   ]);
   state.registryDoc = registryDoc;
   state.playbackDoc = playbackDoc;
   state.visualDoc = visualDoc;
   state.interchangeDoc = interchangeDoc;
+  state.soundPackDoc = validatePack(soundPackDoc, registryDoc, noteToMidi);
+  state.referenceSoundPackDoc = structuredClone(state.soundPackDoc);
+  state.soundPackManifestPath = "soundpacks/reference.json";
+  state.soundPackFiles = new Map();
   state.colorMode = visualDoc.default_mode;
   state.sources = new Map(registryDoc.sources.map(source => [source.id, source]));
   state.profiles = new Map(playbackDoc.profiles.map(profile => [`${profile.source}/${profile.gesture}`, profile]));
@@ -56,6 +69,85 @@ function sourceLabel(sourceId) {
 
 function actionLabel(gesture) {
   return titleWords(gesture);
+}
+
+function realizationKey(event) {
+  return `${event.source}/${event.gesture}`;
+}
+
+function localSampleFor(event) {
+  return state.localSamples.get(realizationKey(event)) || null;
+}
+
+function packBindingFor(event) {
+  return state.soundPackDoc ? resolveBinding(state.soundPackDoc, event) : null;
+}
+
+function effectiveRealization(event) {
+  const local = localSampleFor(event);
+  if (local) return {kind: "sample", origin: "local", name: local.file.name, file: local.file, gain: 1, loop: local.loop, root_note: local.root_note || null};
+  const binding = packBindingFor(event);
+  if (!binding) return {kind: "reference", origin: "reference", name: "Reference synth"};
+  const key = fileKeyFor(state.soundPackManifestPath, binding.asset);
+  const file = state.soundPackFiles.get(key);
+  if (!file) return {kind: "reference", origin: "missing", name: "Reference synth", missing: binding.asset};
+  return {kind: "sample", origin: "pack", name: binding.asset, file, gain: binding.gain ?? 1, loop: Boolean(binding.loop), root_note: binding.root_note || null, credit: binding.credit || ""};
+}
+
+function packAvailability() {
+  if (!state.soundPackDoc) return {bindings: 0, missing: 0};
+  let missing = 0;
+  for (const binding of state.soundPackDoc.bindings) {
+    const key = fileKeyFor(state.soundPackManifestPath, binding.asset);
+    if (!state.soundPackFiles.has(key)) missing++;
+  }
+  return {bindings: state.soundPackDoc.bindings.length, missing};
+}
+
+function renderPackSettings() {
+  if (!state.soundPackDoc) return;
+  const availability = packAvailability();
+  $("pack-name").textContent = state.soundPackDoc.name;
+  const detail = describePack(state.soundPackDoc);
+  $("pack-meta").textContent = availability.bindings
+    ? `${detail} · ${availability.bindings - availability.missing}/${availability.bindings} samples available; missing samples fall back.`
+    : `${detail} · ${state.soundPackDoc.provenance.notes || "Reference playback."}`;
+}
+
+function useReferenceSoundPack() {
+  state.soundPackDoc = structuredClone(state.referenceSoundPackDoc);
+  state.soundPackManifestPath = "soundpacks/reference.json";
+  state.soundPackFiles = new Map();
+  renderAll();
+  status("Using the Reference Synth pack. Local sample overrides still take priority.");
+}
+
+async function loadSoundPackFolder(fileList) {
+  const files = [...fileList];
+  let manifestFile = null;
+  let parsed = null;
+  for (const file of files.filter(candidate => candidate.name.toLowerCase().endsWith(".json"))) {
+    try {
+      const candidate = JSON.parse(await file.text());
+      if (candidate?.format === "esn-sound-pack/1") {
+        manifestFile = file;
+        parsed = candidate;
+        break;
+      }
+    } catch (_) {
+      // Ignore unrelated JSON files while looking for a pack manifest.
+    }
+  }
+  if (!manifestFile) throw new Error("No esn-sound-pack/1 manifest was found in that folder.");
+  const doc = validatePack(parsed, state.registryDoc, noteToMidi);
+  const manifestPath = (manifestFile.webkitRelativePath || manifestFile.name).replaceAll("\\", "/");
+  const fileMap = new Map(files.map(file => [(file.webkitRelativePath || file.name).replaceAll("\\", "/"), file]));
+  state.soundPackDoc = doc;
+  state.soundPackManifestPath = manifestPath;
+  state.soundPackFiles = fileMap;
+  renderAll();
+  const availability = packAvailability();
+  status(`Loaded ${doc.name}: ${availability.bindings - availability.missing}/${availability.bindings} sample bindings available; ${availability.missing} use reference fallback.`);
 }
 
 const SCORE_FIELDS = new Set(["format", "title", "tempo_bpm", "metadata", "events"]);
@@ -139,6 +231,11 @@ function newScene() {
   applyScore({format: "esn/1", title: "Untitled sound scene", tempo_bpm: 120, events: []}, "New empty sound scene ready.");
 }
 
+async function resetExample() {
+  const score = await fetch("../examples/first-score.esn.json").then(response => response.json());
+  applyScore(score, `Example restored: ${score.events.length} sounds at ${score.tempo_bpm} BPM.`);
+}
+
 async function openProjectFile(file) {
   try {
     const parsed = JSON.parse(await file.text());
@@ -205,6 +302,7 @@ function eventTop(event) {
 
 function renderAll() {
   renderSceneSettings();
+  renderPackSettings();
   renderVisualMode();
   renderPalette();
   renderRuler();
@@ -303,10 +401,15 @@ function renderTimeline() {
     root.append(chip);
   }
 
-  root.addEventListener("click", () => {
+  root.onclick = click => {
+    if (click.target !== root) return;
+    if (state.ignoreTimelineClick) {
+      state.ignoreTimelineClick = false;
+      return;
+    }
     state.selectedId = null;
     renderAll();
-  }, {once: true});
+  };
 }
 
 function installDrag(element, event) {
@@ -317,12 +420,17 @@ function installDrag(element, event) {
     const startY = down.clientY;
     const originalOnset = Number(event.onset);
     const originalMidi = pitchMidi(event);
+    let moved = false;
 
     const move = current => {
-      const beats = Math.round(((current.clientX - startX) / PX_PER_BEAT) * 4) / 4;
+      const deltaX = current.clientX - startX;
+      const deltaY = current.clientY - startY;
+      if (!moved && Math.abs(deltaX) < 3 && Math.abs(deltaY) < 3) return;
+      moved = true;
+      const beats = Math.round((deltaX / PX_PER_BEAT) * 4) / 4;
       event.onset = Math.max(0, originalOnset + beats);
       if (originalMidi !== null) {
-        const semitones = Math.round((startY - current.clientY) / SEMITONE_PX);
+        const semitones = Math.round(-deltaY / SEMITONE_PX);
         event.pitch = {note: midiToNote(originalMidi + semitones)};
         delete event.pitch_curve;
       }
@@ -331,6 +439,10 @@ function installDrag(element, event) {
     };
     const up = () => {
       element.removeEventListener("pointermove", move);
+      if (!moved) return;
+      state.selectedId = event.id;
+      state.ignoreTimelineClick = true;
+      setTimeout(() => { state.ignoreTimelineClick = false; }, 0);
       renderAll();
     };
     element.addEventListener("pointermove", move);
@@ -377,6 +489,20 @@ function renderInspector() {
   const gestureSelect = $("event-gesture");
   gestureSelect.replaceChildren(...source.gestures.map(gesture => new Option(actionLabel(gesture), gesture)));
   gestureSelect.value = event.gesture;
+  const local = localSampleFor(event);
+  const realization = effectiveRealization(event);
+  if (realization.kind === "sample") {
+    $("event-realization").textContent = realization.origin === "local" ? `Local sample · ${realization.name}` : `${state.soundPackDoc.name} · ${realization.name}`;
+    $("event-realization-detail").textContent = realization.credit || (realization.origin === "local" ? "Applies to every matching source/action in this session." : `Pack sample · ${state.soundPackDoc.license.name}`);
+  } else {
+    $("event-realization").textContent = realization.missing ? "Reference synth · sample missing" : "Reference synth";
+    $("event-realization-detail").textContent = realization.missing ? `Could not find ${realization.missing}; playback falls back safely.` : "Uses the built-in sketch sound.";
+  }
+  $("sample-loop").checked = Boolean(local?.loop);
+  $("sample-root").value = local?.root_note || "";
+  $("sample-loop").disabled = !local;
+  $("sample-root").disabled = !local;
+  $("clear-sample").disabled = !local;
 }
 
 function commitInspector() {
@@ -402,6 +528,30 @@ function commitInspector() {
   renderAll();
 }
 
+function setLocalSample(file) {
+  const event = selectedEvent();
+  if (!event) return;
+  state.localSamples.set(realizationKey(event), {file, loop: false, root_note: null});
+  renderInspector();
+  status(`Using ${file.name} for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} in this session.`);
+}
+
+function commitLocalSampleSettings() {
+  const event = selectedEvent();
+  if (!event) return;
+  const local = localSampleFor(event);
+  if (!local) return;
+  const rootNote = $("sample-root").value.trim();
+  if (rootNote && noteToMidi(rootNote) === null) {
+    $("sample-root").value = local.root_note || "";
+    return status(`Invalid sample root pitch: ${rootNote}`);
+  }
+  local.loop = $("sample-loop").checked;
+  local.root_note = rootNote || null;
+  renderInspector();
+  status(`Updated local sample realization for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)}.`);
+}
+
 function audioContext() {
   if (!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
   return state.audio;
@@ -411,7 +561,7 @@ function midiHz(midi) {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-function previewEvent(event, when = null, durationOverride = null) {
+function previewReferenceEvent(event, when = null, durationOverride = null) {
   const ctx = audioContext();
   const profile = profileFor(event);
   if (!profile) return status(`No playback profile for ${event.source}/${event.gesture}`);
@@ -453,12 +603,72 @@ function previewEvent(event, when = null, durationOverride = null) {
   source.start(start);
 }
 
-function playScore() {
+async function decodedSample(file) {
+  if (!state.sampleBuffers.has(file)) {
+    const ctx = audioContext();
+    const promise = file.arrayBuffer().then(data => ctx.decodeAudioData(data.slice(0)));
+    state.sampleBuffers.set(file, promise);
+  }
+  return state.sampleBuffers.get(file);
+}
+
+function samplePlaybackRate(event, rootNote, midiOverride = null) {
+  if (!rootNote) return 1;
+  const rootMidi = noteToMidi(rootNote);
+  const midi = midiOverride ?? pitchMidi(event);
+  if (rootMidi === null || midi === null) return 1;
+  return 2 ** ((midi - rootMidi) / 12);
+}
+
+async function prepareRealization(event) {
+  const realization = effectiveRealization(event);
+  if (realization.kind !== "sample") return realization;
+  try {
+    return {...realization, buffer: await decodedSample(realization.file)};
+  } catch (error) {
+    return {kind: "reference", origin: "decode-fallback", name: "Reference synth", failure: error.message};
+  }
+}
+
+function previewSampleEvent(event, realization, start, duration) {
+  const ctx = audioContext();
+  const source = ctx.createBufferSource();
+  const gainNode = ctx.createGain();
+  source.buffer = realization.buffer;
+  source.loop = Boolean(realization.loop);
+  gainNode.gain.setValueAtTime((realization.gain ?? 1) * (event.dynamics ?? 0.75), start);
+  source.playbackRate.setValueAtTime(samplePlaybackRate(event, realization.root_note), start);
+  for (const point of event.pitch_curve || []) {
+    const pointMidi = point.pitch.note ? noteToMidi(point.pitch.note) : 69 + 12 * Math.log2(point.pitch.hz / 440);
+    const rate = Math.max(0.01, samplePlaybackRate(event, realization.root_note, pointMidi));
+    source.playbackRate.exponentialRampToValueAtTime(rate, start + point.at * duration);
+  }
+  source.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  source.start(start);
+  source.stop(start + duration);
+}
+
+async function previewEvent(event, when = null, durationOverride = null, prepared = null) {
+  const ctx = audioContext();
+  const start = when ?? ctx.currentTime + 0.02;
+  const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
+  const duration = durationOverride ?? Number(event.duration) * beatSeconds;
+  const realization = prepared || await prepareRealization(event);
+  if (realization.kind === "sample") previewSampleEvent(event, realization, start, duration);
+  else previewReferenceEvent(event, start, duration);
+  return realization;
+}
+
+async function playScore() {
   const ctx = audioContext();
   const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
-  const base = ctx.currentTime + 0.05;
-  for (const event of state.score.events) previewEvent(event, base + Number(event.onset) * beatSeconds);
-  status(`Previewing ${state.score.events.length} sounds with the reference synth.`);
+  const prepared = await Promise.all(state.score.events.map(prepareRealization));
+  const base = ctx.currentTime + 0.08;
+  state.score.events.forEach((event, index) => previewEvent(event, base + Number(event.onset) * beatSeconds, null, prepared[index]));
+  const sampleCount = prepared.filter(item => item.kind === "sample").length;
+  const fallbackCount = prepared.length - sampleCount;
+  status(`Previewing ${prepared.length} sounds: ${sampleCount} sample-backed, ${fallbackCount} reference synth.`);
 }
 
 function canonical(value) {
@@ -509,6 +719,31 @@ $("color-mode").addEventListener("change", event => {
   const meaning = state.colorMode === "pitch_class" ? "note names" : `scale steps relative to ${state.visualDoc.scale.tonic}`;
   status(`Colors now show ${meaning}.`);
 });
+$("load-pack").addEventListener("click", () => $("pack-folder").click());
+$("pack-folder").addEventListener("change", async event => {
+  const files = event.target.files;
+  if (files?.length) {
+    try { await loadSoundPackFolder(files); }
+    catch (error) { status(`Could not load sound pack: ${error.message}`); }
+  }
+  event.target.value = "";
+});
+$("use-reference-pack").addEventListener("click", useReferenceSoundPack);
+$("choose-sample").addEventListener("click", () => $("sample-file").click());
+$("sample-file").addEventListener("change", event => {
+  const file = event.target.files?.[0];
+  if (file) setLocalSample(file);
+  event.target.value = "";
+});
+$("sample-loop").addEventListener("change", commitLocalSampleSettings);
+$("sample-root").addEventListener("change", commitLocalSampleSettings);
+$("clear-sample").addEventListener("click", () => {
+  const event = selectedEvent();
+  if (!event) return;
+  state.localSamples.delete(realizationKey(event));
+  renderInspector();
+  status(`Cleared local sample for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)}.`);
+});
 $("new-scene").addEventListener("click", newScene);
 $("open-project").addEventListener("click", () => $("project-file").click());
 $("project-file").addEventListener("change", async event => {
@@ -518,16 +753,17 @@ $("project-file").addEventListener("change", async event => {
 });
 $("scene-title").addEventListener("change", commitSceneSettings);
 $("scene-tempo").addEventListener("change", commitSceneSettings);
-$("reload").addEventListener("click", loadBundled);
+$("reload").addEventListener("click", () => resetExample());
 $("play-score").addEventListener("click", playScore);
 $("export").addEventListener("click", exportScore);
 $("export-cues").addEventListener("click", exportCueSheet);
 $("export-midi").addEventListener("click", exportMidi);
-$("play-event").addEventListener("click", () => {
+$("play-event").addEventListener("click", async () => {
   const event = selectedEvent();
   if (!event) return;
-  previewEvent(event);
-  status(`Previewing ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} with the reference synth.`);
+  const realization = await previewEvent(event);
+  const via = realization.kind === "sample" ? realization.name : "Reference synth";
+  status(`Previewing ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} via ${via}.`);
 });
 $("delete-event").addEventListener("click", () => {
   const event = selectedEvent();

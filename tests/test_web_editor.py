@@ -34,6 +34,7 @@ class WebEditorTests(unittest.TestCase):
         self.assertIn("../playback/core.json", script)
         self.assertIn("../visual/core.json", script)
         self.assertIn("../interchange/core.json", script)
+        self.assertIn("../soundpacks/reference.json", script)
         self.assertIn("pitch_policy", script)
         self.assertIn("structuredClone", script)
 
@@ -55,6 +56,13 @@ class WebEditorTests(unittest.TestCase):
         self.assertIn('$("scene-tempo").addEventListener("change"', script)
         self.assertIn("reference synth", script)
 
+    def test_click_selection_is_not_consumed_by_drag_rebuild(self) -> None:
+        script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        self.assertIn("root.onclick = click =>", script)
+        self.assertIn("if (!moved) return;", script)
+        self.assertIn("state.selectedId = event.id;", script)
+        self.assertIn("state.ignoreTimelineClick = true;", script)
+
     def test_editor_exports_loss_aware_handoffs(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
@@ -65,6 +73,17 @@ class WebEditorTests(unittest.TestCase):
         self.assertIn("exportMidi", script)
         self.assertIn("cueCsv", domain)
         self.assertIn("midiBytes", domain)
+
+
+    def test_sound_pack_workflow_is_customer_wired(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        script = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        for element_id in ("load-pack", "pack-folder", "pack-name", "choose-sample", "sample-file", "sample-loop", "sample-root", "clear-sample"):
+            self.assertIn(f'id="{element_id}"', html)
+        self.assertIn('src="sound-pack-domain.js"', html)
+        for symbol in ("loadSoundPackFolder", "effectiveRealization", "prepareRealization", "setLocalSample"):
+            self.assertIn(f"function {symbol}", script)
+        self.assertIn("missing samples fall back", script)
 
 
 if __name__ == "__main__":

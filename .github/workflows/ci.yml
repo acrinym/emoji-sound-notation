@@ -21,20 +21,24 @@ jobs:
       - run: python -m json.tool playback/core.json >/dev/null
       - run: python -m json.tool visual/core.json >/dev/null
       - run: python -m json.tool interchange/core.json >/dev/null
+      - run: python -m json.tool soundpacks/reference.json >/dev/null
       - run: python -m json.tool docs/esn-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-playback-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-visual-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-interchange-1.schema.json >/dev/null
+      - run: python -m json.tool docs/esn-sound-pack-1.schema.json >/dev/null
       - run: python -m json.tool examples/first-score.esn.json >/dev/null
       - run: node --check web/esn-domain.js
       - run: node --check web/visual-domain.js
       - run: node --check web/interchange-domain.js
+      - run: node --check web/sound-pack-domain.js
       - run: node --check web/editor.js
       - run: node --test tests/web_domain.test.js
       - run: python -m unittest discover -s tests -v
       - run: esn validate examples/first-score.esn.json --registry registries/core.json
       - run: esn visual-validate --visual visual/core.json --registry registries/core.json
       - run: esn interchange-validate --interchange interchange/core.json --registry registries/core.json
+      - run: esn sound-pack-validate --sound-pack soundpacks/reference.json --registry registries/core.json
       - run: esn render examples/first-score.esn.json --registry registries/core.json -o /tmp/legacy-a.svg
       - run: esn render examples/first-score.esn.json --registry registries/core.json -o /tmp/legacy-b.svg
       - run: cmp /tmp/legacy-a.svg /tmp/legacy-b.svg
@@ -50,6 +54,8 @@ jobs:
       - run: esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json -o /tmp/first-a.wav
       - run: esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json -o /tmp/first-b.wav
       - run: cmp /tmp/first-a.wav /tmp/first-b.wav
+      - run: esn audio examples/first-score.esn.json --registry registries/core.json --playback playback/core.json --sound-pack soundpacks/reference.json -o /tmp/reference-pack.wav
+      - run: cmp /tmp/first-a.wav /tmp/reference-pack.wav
       - run: esn midi-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/first-a.mid --report /tmp/report-a.json
       - run: esn midi-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/first-b.mid --report /tmp/report-b.json
       - run: cmp /tmp/first-a.mid /tmp/first-b.mid
