@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/esn-visual-1.schema.json",
+  "title": "ESN Visual Binding 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format","name","default_mode","scale","palettes","style","glyphs"],
+  "properties": {
+    "format": {"const":"esn-visual/1"},
+    "name": {"type":"string","minLength":1},
+    "default_mode": {"enum":["pitch_class","scale_degree"]},
+    "scale": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["tonic","intervals"],
+      "properties": {
+        "tonic":{"type":"string","pattern":"^[A-Ga-g][#b]?$"},
+        "intervals":{"type":"array","minItems":1,"maxItems":12,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":11}}
+      }
+    },
+    "palettes": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["pitch_class","scale_degree","chromatic","unpitched"],
+      "properties": {
+        "pitch_class":{"type":"array","minItems":12,"maxItems":12,"items":{"$ref":"#/$defs/color"}},
+        "scale_degree":{"type":"array","minItems":1,"maxItems":12,"items":{"$ref":"#/$defs/color"}},
+        "chromatic":{"$ref":"#/$defs/color"},
+        "unpitched":{"$ref":"#/$defs/color"}
+      }
+    },
+    "style": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["stroke","detail"],
+      "properties": {
+        "stroke":{"$ref":"#/$defs/color"},
+        "detail":{"$ref":"#/$defs/color"}
+      }
+    },
+    "glyphs": {
+      "type":"array",
+      "minItems":1,
+      "items": {
+        "type":"object",
+        "additionalProperties":false,
+        "required":["source","id","path"],
+        "properties": {
+          "source":{"type":"string","minLength":1},
+          "id":{"type":"string","pattern":"^[a-z][a-z0-9_-]*$"},
+          "path":{"type":"string","minLength":1},
+          "details":{"type":"string"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}
+  }
+}

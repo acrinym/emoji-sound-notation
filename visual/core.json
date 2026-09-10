@@ -1,0 +1,22 @@
+{
+  "format": "esn-visual/1",
+  "name": "ESN Core Canonical Visual Profile",
+  "default_mode": "pitch_class",
+  "scale": {"tonic":"C","intervals":[0,2,4,5,7,9,11]},
+  "palettes": {
+    "pitch_class": ["#e74c3c","#e67e22","#f1c40f","#9acd32","#2ecc71","#1abc9c","#00a8cc","#3498db","#5b6ee1","#8e44ad","#c039d3","#e84393"],
+    "scale_degree": ["#e74c3c","#f39c12","#f1c40f","#2ecc71","#00a8cc","#5b6ee1","#c039d3"],
+    "chromatic": "#6b7280",
+    "unpitched": "#343947"
+  },
+  "style": {"stroke":"#202435","detail":"#f8fafc"},
+  "glyphs": [
+    {"source":"instrument:piano","id":"piano","path":"M3 5h18v14H3z","details":"M6 5v9M9 5v9M12 5v9M15 5v9M18 5v9"},
+    {"source":"instrument:bell","id":"bell","path":"M12 3c-3 0-5 2.5-5 6v4l-2 3h14l-2-3V9c0-3.5-2-6-5-6zM10 18h4c-.4 1.5-1.1 2-2 2s-1.6-.5-2-2z","details":"M8 16h8"},
+    {"source":"animal:cat","id":"cat","path":"M5 9L4 3l5 3c2-1 4-1 6 0l5-3-1 6v8c0 3-3 5-7 5s-7-2-7-5z","details":"M8 12h2M14 12h2M9 16l3 2 3-2"},
+    {"source":"animal:wolf","id":"wolf","path":"M4 8L6 2l5 4h2l5-4 2 6-2 9-6 5-6-5z","details":"M8 11h2M14 11h2M10 16h4M12 16v3"},
+    {"source":"nature:rain","id":"rain","path":"M7 15h10c3 0 4-2 4-4s-2-4-4-4c-1-3-3-4-6-3-2 0-4 2-4 4-3 0-5 1-5 4 0 2 2 3 5 3z","details":"M7 17l-1 4M12 17l-1 4M17 17l-1 4"},
+    {"source":"foley:door","id":"door","path":"M5 3h14v18H5zM8 6h8v15H8z","details":"M14 13h1"},
+    {"source":"percussion:drum","id":"drum","path":"M4 7c0-2 4-3 8-3s8 1 8 3v10c0 2-4 3-8 3s-8-1-8-3z","details":"M4 7c0 2 4 3 8 3s8-1 8-3M4 16c0 2 4 3 8 3s8-1 8-3"}
+  ]
+}

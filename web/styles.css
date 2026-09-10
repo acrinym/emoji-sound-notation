@@ -79,3 +79,12 @@ input[type=range] { padding: 0; }
   main { grid-template-columns: 220px minmax(520px,1fr); }
   .inspector-panel { grid-column: 1 / -1; }
 }
+
+.mode-control {
+  display: flex; align-items: center; gap: 6px; margin: 0;
+  color: #d7dbea; font-size: 12px;
+}
+.mode-control select { width: auto; min-width: 120px; padding: 7px 8px; }
+.source-name { display: flex; align-items: center; gap: 7px; }
+.canonical-glyph { display: inline-block; vertical-align: middle; flex: 0 0 auto; }
+.event .glyph { display: inline-flex; align-items: center; vertical-align: middle; }
