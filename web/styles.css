@@ -123,3 +123,18 @@ input[type=range] { padding: 0; }
   header { flex-direction: column; align-items: flex-start; }
   .toolbar { width: 100%; }
 }
+
+.sound-pack-settings {
+  display: grid; gap: 5px; margin-bottom: 16px; padding-bottom: 14px;
+  border-bottom: 1px solid #e5e8ef;
+}
+.sound-pack-settings h2 { margin-bottom: 2px; }
+.pack-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.pack-actions button { padding: 6px 8px; font-size: 11px; }
+.realization-control {
+  display: grid; gap: 5px; margin: 12px 0 0; padding: 10px;
+  border: 1px solid #e0e3eb; border-radius: 9px; background: #f8f9fc;
+}
+.realization-control legend { padding: 0 5px; color: #5f6573; font-size: 11px; }
+.checkbox-row { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; }
+.checkbox-row input { width: auto; margin: 0; }

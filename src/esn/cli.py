@@ -9,6 +9,7 @@ from .interchange import (
 from .model import ValidationError, canonical_json, load_json, load_registry, validate_score
 from .playback import load_playback_registry, write_wav
 from .render import render_svg
+from .soundpack import load_sound_pack
 from .visual import COLOR_MODES, load_visual_profile, render_glyph_sheet
 
 
@@ -25,6 +26,7 @@ def _parser() -> argparse.ArgumentParser:
             cmd.add_argument("-o", "--output", required=True)
         if name == "audio":
             cmd.add_argument("--playback", required=True)
+            cmd.add_argument("--sound-pack")
         if name == "render":
             cmd.add_argument("--visual")
             cmd.add_argument("--color-mode", choices=sorted(COLOR_MODES))
@@ -42,6 +44,11 @@ def _parser() -> argparse.ArgumentParser:
     interchange_validate.add_argument("interchange_path", nargs="?")
     interchange_validate.add_argument("--interchange")
     interchange_validate.add_argument("--registry", required=True)
+
+    sound_pack_validate = sub.add_parser("sound-pack-validate")
+    sound_pack_validate.add_argument("sound_pack_path", nargs="?")
+    sound_pack_validate.add_argument("--sound-pack")
+    sound_pack_validate.add_argument("--registry", required=True)
 
     glyph_sheet = sub.add_parser("glyph-sheet")
     glyph_sheet.add_argument("--visual", required=True)
@@ -67,6 +74,16 @@ def main(argv: list[str] | None = None) -> int:
             profile = load_interchange_profile(interchange_path, registry)
             print(f"valid esn-interchange/1: {len(profile['mappings'])} MIDI mappings")
             return 0
+        if args.command == "sound-pack-validate":
+            sound_pack_path = args.sound_pack or args.sound_pack_path
+            if not sound_pack_path:
+                raise ValidationError("sound-pack-validate requires --sound-pack PACK")
+            sound_pack = load_sound_pack(sound_pack_path, registry)
+            print(
+                f"valid esn-sound-pack/1: {len(sound_pack['bindings'])} sample bindings, "
+                f"{len(sound_pack['missing_assets'])} missing assets"
+            )
+            return 0
         if args.command == "glyph-sheet":
             visual = load_visual_profile(args.visual, registry)
             Path(args.output).write_text(render_glyph_sheet(visual, registry), encoding="utf-8", newline="\n")
@@ -88,7 +105,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "audio":
             playback = load_playback_registry(args.playback, registry)
-            write_wav(args.output, score, registry, playback)
+            sound_pack = load_sound_pack(args.sound_pack, registry) if args.sound_pack else None
+            write_wav(args.output, score, registry, playback, sound_pack)
         elif args.command == "midi-export":
             interchange = load_interchange_profile(args.interchange, registry)
             report = write_smf(args.output, score, registry, interchange)

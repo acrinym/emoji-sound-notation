@@ -1,0 +1,17 @@
+{
+  "format": "esn-sound-pack/1",
+  "id": "esn.reference-synth",
+  "name": "Reference Synth",
+  "version": "1.0.0",
+  "license": {
+    "name": "MIT",
+    "spdx": "MIT"
+  },
+  "provenance": {
+    "creator": "Emoji Sound Notation",
+    "source": "Built-in procedural realization",
+    "notes": "No recorded assets are bundled; every event delegates to esn-playback/1."
+  },
+  "fallback": "reference_synth",
+  "bindings": []
+}

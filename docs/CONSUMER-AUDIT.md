@@ -1,6 +1,6 @@
 # Consumer Audit
 
-Status: Beadtrain 4
+Status: Beadtrain 5
 Date: 2026-09-09
 
 ## Question
@@ -97,3 +97,55 @@ The current useful promise is:
 An adversarial review found that overlapping events mapped to the same MIDI channel and note could be truncated by the earlier event's note-off. The semantic cue survived, but the playable projection did not preserve the later event's declared duration.
 
 The exporter now plans note lifetimes before writing. Program-backed pitched mappings spill colliding notes onto deterministic auxiliary channels with the same program, preserving both start and end ticks. If no semantically safe channel exists, the later event stays cue-only instead of claiming incorrect playable timing. Python and browser exporters share the same rule and a parsed-SMF regression proves the two-event overlap case.
+
+## Beadtrain 5 re-audit — sound-pack realization
+
+Train 5 was exercised again through the actual local product in Microsoft Edge using Playwright against `launch_esn.py`. The qualification pack was generated locally for the run and contained one valid PCM WAV binding (`Cat / Meow`) plus one deliberately missing binding (`Door / Slam`). It was not added to the repository as product content.
+
+The realization contract under test was:
+
+> Keep the ESN event semantic identity stable while allowing playback realization to change independently.
+
+| Journey | Expected | Actual | Result |
+| --- | --- | --- | --- |
+| Open product | Existing landing/editor still works | Landing → canvas, 6 events | PASS |
+| Default realization | Product starts without third-party samples | Reference Synth pack visible | PASS |
+| Load pack folder | Discover manifest + assets locally | Audit Sample Pack loaded | PASS |
+| Pack availability | Missing assets are explicit | 1/2 available, 1 fallback | PASS |
+| Provenance | Creator/license visible | Creator + CC0 metadata shown | PASS |
+| Cat / Meow | Exact semantic binding selects WAV | Pack WAV selected | PASS |
+| Preview pack sample | WAV decodes and plays through Web Audio | Sample-backed preview | PASS |
+| Door / Slam | Missing sample does not break event | Reference-synth fallback shown and played | PASS |
+| Local WAV override | User can override source/action locally | Local WAV became active realization | PASS |
+| Root pitch + loop | Local controls persist | C4 root + loop retained | PASS |
+| Save project | Realization does not contaminate `esn/1` | Saved JSON contains semantic score only | PASS |
+| New → Open | Score lifecycle remains independent | Pack and local realization state stayed separate | PASS |
+| Clear local override | Return to pack binding | Pack sample restored | PASS |
+| Reference Synth | Explicitly return to built-in fallback | Reference realization restored | PASS |
+| Responsive 1440 | No page-level overflow | 1440/1440 | PASS |
+| Responsive 1280 | No page-level overflow | 1280/1280 | PASS |
+| Responsive 1024 | No page-level overflow | 1024/1024 | PASS |
+| Browser health | No runtime noise | 0 console errors, 0 page errors, 0 failed requests | PASS |
+
+The full automated Edge journey recorded **28/28 assertions green**.
+
+### Interaction defect found during Train 5 qualification
+
+The first Edge run exposed a real pre-existing interaction defect that unit/static tests had not caught: clicking a timeline event could fail to select it because the drag `pointerup` handler rebuilt the timeline before the browser dispatched the subsequent `click`. The rebuilt blank timeline then consumed the click and cleared selection.
+
+The repair separates click from drag:
+
+- movement must cross a small threshold before the interaction is treated as a drag;
+- a simple click no longer rebuilds the timeline during `pointerup`;
+- the blank-timeline click handler is assigned once instead of accumulating `once` listeners on every render;
+- completed drags preserve the event selection while suppressing only the immediate synthetic blank-timeline click.
+
+The Edge re-run after that repair passed event selection, pack realization selection, and the complete 28-assertion customer journey.
+
+## Train 5 customer promise
+
+The product can now say:
+
+> Build a mixed musical/non-musical sound scene, choose how its semantic sounds are realized locally, preview it, save/reopen the semantic project, and hand it off without tying the score to one sample library.
+
+The repository intentionally does not bundle third-party recordings. The built-in Reference Synth remains a deterministic fallback, while customers may load licensed sound-pack folders or their own WAV files locally.

@@ -24,7 +24,7 @@
       <button id="open-project" title="Open an ESN project from this computer">Open</button>
       <input id="project-file" type="file" accept=".json,.esn.json,application/json" hidden>
       <button id="reload" title="Restore the bundled example">Reset example</button>
-      <button id="play-score" title="Reference synth preview for timing and pitch">▶ Preview scene</button>
+      <button id="play-score" title="Preview with the active sound pack, local samples, and reference fallback">▶ Preview scene</button>
       <button id="export" title="Save an editable ESN project">Save project</button>
       <button id="export-cues" title="CSV with beat positions and timecodes">Cue sheet</button>
       <button id="export-midi" title="Standard MIDI File with timed ESN cue markers">MIDI</button>
@@ -59,6 +59,17 @@
         <label>Tempo (BPM) <input id="scene-tempo" type="number" min="1" step="1"></label>
       </section>
 
+      <section class="sound-pack-settings" aria-label="Sound pack settings">
+        <h2>Sound pack</h2>
+        <strong id="pack-name">Reference Synth</strong>
+        <span id="pack-meta" class="field-help">Built-in sketch playback; no recorded samples.</span>
+        <div class="pack-actions">
+          <button type="button" id="load-pack">Load pack folder</button>
+          <button type="button" id="use-reference-pack">Reference synth</button>
+        </div>
+        <input id="pack-folder" type="file" accept=".json,.wav,audio/wav" webkitdirectory directory multiple hidden>
+      </section>
+
       <h2>Selected sound</h2>
       <div id="empty-inspector" class="empty-state">
         <strong>Nothing selected yet.</strong>
@@ -71,8 +82,20 @@
         <label>Length (beats) <input id="event-duration" type="number" min="0.01" step="0.25"></label>
         <label id="pitch-row">Pitch <input id="event-pitch" placeholder="C4" aria-describedby="pitch-help"><span id="pitch-help" class="field-help">Example: C4, F#4, Bb3</span></label>
         <label>Loudness <input id="event-dynamics" type="range" min="0" max="1" step="0.01"></label>
+        <fieldset class="realization-control">
+          <legend>Playback realization</legend>
+          <strong id="event-realization">Reference synth</strong>
+          <span id="event-realization-detail" class="field-help">Uses the built-in sketch sound.</span>
+          <div class="pack-actions">
+            <button type="button" id="choose-sample">Use WAV sample</button>
+            <button type="button" id="clear-sample">Clear local sample</button>
+          </div>
+          <label>Sample root pitch (optional)<input id="sample-root" placeholder="C4"><span class="field-help">Use this when the WAV has a known pitch and should follow event pitch.</span></label>
+          <label class="checkbox-row"><input id="sample-loop" type="checkbox"> Loop sample to fill event</label>
+          <input id="sample-file" type="file" accept=".wav,audio/wav" hidden>
+        </fieldset>
         <div class="inspector-actions">
-          <button type="button" id="play-event" title="Reference synth preview for this event">▶ Preview</button>
+          <button type="button" id="play-event" title="Preview this sound with its active realization">▶ Preview</button>
           <button type="button" id="delete-event" class="danger">Delete</button>
         </div>
         <details class="advanced">
@@ -83,7 +106,7 @@
       <pre id="status" aria-live="polite"></pre>
       <div class="handoff-note">
         <strong>What can I do with this?</strong>
-        <span><b>Preview</b> uses a lightweight reference synth to check timing and pitch. <b>Save project</b> keeps the editable ESN score. <b>Cue sheet</b> creates timecoded CSV. <b>MIDI</b> exports playable notes and preserves every sound as a timed cue marker.</span>
+        <span><b>Preview</b> uses your active sound pack or local WAV overrides, with the reference synth as a safe fallback. <b>Save project</b> keeps the editable ESN semantics separate from playback assets. <b>Cue sheet</b> creates timecoded CSV. <b>MIDI</b> exports playable notes and preserves every sound as a timed cue marker.</span>
       </div>
     </aside>
   </main>
@@ -91,6 +114,7 @@
   <script src="esn-domain.js"></script>
   <script src="visual-domain.js"></script>
   <script src="interchange-domain.js"></script>
+  <script src="sound-pack-domain.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>

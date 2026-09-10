@@ -105,3 +105,43 @@ test("browser MIDI isolates overlapping same-note lifetimes", () => {
   assert.equal(rows.find(row => row.id === "second").midi_channel, "3");
   assert.match(rows.find(row => row.id === "second").midi_status, /overlap_channel_reassigned/);
 });
+
+const SoundPack = require("../web/sound-pack-domain.js");
+const registry = require("../registries/core.json");
+const referencePack = require("../soundpacks/reference.json");
+
+test("browser sound-pack contract keeps reference playback as an explicit fallback", () => {
+  const validated = SoundPack.validatePack(structuredClone(referencePack), registry, noteToMidi);
+  assert.equal(validated.format, "esn-sound-pack/1");
+  assert.equal(validated.bindings.length, 0);
+  assert.equal(validated.fallback, "reference_synth");
+});
+
+test("browser sound-pack resolver prefers exact action then source wildcard", () => {
+  const pack = structuredClone(referencePack);
+  pack.id = "test.pack"; pack.name = "Test Pack";
+  pack.bindings = [
+    {source:"animal:cat", gesture:"*", asset:"samples/cat.wav"},
+    {source:"animal:cat", gesture:"meow", asset:"samples/meow.wav", root_note:"C4", loop:false},
+  ];
+  SoundPack.validatePack(pack, registry, noteToMidi);
+  assert.equal(SoundPack.resolveBinding(pack, {source:"animal:cat", gesture:"meow"}).asset, "samples/meow.wav");
+  assert.equal(SoundPack.resolveBinding(pack, {source:"animal:cat", gesture:"purr"}).asset, "samples/cat.wav");
+});
+
+test("browser sound-pack validation rejects traversal and unknown semantics", () => {
+  const traversal = structuredClone(referencePack);
+  traversal.bindings = [{source:"animal:cat", gesture:"meow", asset:"../outside.wav"}];
+  assert.throws(() => SoundPack.validatePack(traversal, registry, noteToMidi), /relative \.wav path/);
+  const unknown = structuredClone(referencePack);
+  unknown.bindings = [{source:"animal:cat", gesture:"teleport", asset:"samples/nope.wav"}];
+  assert.throws(() => SoundPack.validatePack(unknown, registry, noteToMidi), /invalid action/);
+});
+
+
+test("sound-pack description does not duplicate identical SPDX text", () => {
+  const pack = require("../soundpacks/reference.json");
+  const {describePack} = require("../web/sound-pack-domain.js");
+  const text = describePack(pack);
+  assert.equal((text.match(/MIT/g) || []).length, 1);
+});

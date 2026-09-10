@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .model import ValidationError, load_json, pitch_to_midi, validate_score
+from .soundpack import binding_asset_path, resolve_sound_binding
 
 PLAYBACK_KEYS = {"format", "sample_rate", "seed", "profiles"}
 PROFILE_KEYS = {
@@ -128,7 +129,69 @@ def _event_seed(global_seed: int, event_id: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def render_wav(score: dict[str, Any], sources: dict[str, dict[str, Any]], playback: dict[str, Any]) -> bytes:
+def _read_pcm_wav(path: Path) -> tuple[int, list[float]]:
+    with wave.open(str(path), "rb") as wav:
+        channels = wav.getnchannels()
+        width = wav.getsampwidth()
+        rate = wav.getframerate()
+        if wav.getcomptype() != "NONE" or channels < 1 or channels > 2 or width not in {1, 2}:
+            raise ValidationError("sample assets must be uncompressed 8- or 16-bit mono/stereo PCM WAV")
+        frames = wav.readframes(wav.getnframes())
+    values: list[float] = []
+    stride = channels * width
+    for offset in range(0, len(frames), stride):
+        channel_values = []
+        for channel in range(channels):
+            start = offset + channel * width
+            if width == 1:
+                channel_values.append((frames[start] - 128) / 128.0)
+            else:
+                channel_values.append(struct.unpack_from("<h", frames, start)[0] / 32768.0)
+        values.append(sum(channel_values) / len(channel_values))
+    return rate, values
+
+
+def _mix_sample_event(
+    samples: list[float], start: int, duration_s: float, sample_rate: int, event: dict[str, Any],
+    sound_pack: dict[str, Any], binding: dict[str, Any],
+) -> bool:
+    try:
+        source_rate, source = _read_pcm_wav(binding_asset_path(sound_pack, binding))
+    except (OSError, EOFError, wave.Error, ValidationError):
+        return False
+    if not source:
+        return False
+    count = max(1, int(math.ceil(duration_s * sample_rate)))
+    loop = bool(binding.get("loop", False))
+    gain = float(binding.get("gain", 1.0)) * float(event.get("dynamics", 0.75))
+    root_midi = pitch_to_midi({"note": binding["root_note"]}) if binding.get("root_note") else None
+    source_pos = 0.0
+    fade_frames = max(1, int(round(sample_rate * 0.005)))
+    for offset in range(count):
+        if not loop and source_pos >= len(source):
+            break
+        position = source_pos % len(source) if loop else source_pos
+        left = int(math.floor(position))
+        fraction = position - left
+        right = (left + 1) % len(source) if loop else min(left + 1, len(source) - 1)
+        value = source[left] + (source[right] - source[left]) * fraction
+        if offset >= count - fade_frames:
+            value *= max(0.0, (count - offset - 1) / fade_frames)
+        index = start + offset
+        if index < len(samples):
+            samples[index] += value * gain
+        pitch_factor = 1.0
+        if root_midi is not None and "pitch" in event:
+            at = min(1.0, offset / max(1, count - 1))
+            pitch_factor = 2.0 ** ((_midi_at(event, at) - root_midi) / 12.0)
+        source_pos += (source_rate / sample_rate) * pitch_factor
+    return True
+
+
+def render_wav(
+    score: dict[str, Any], sources: dict[str, dict[str, Any]], playback: dict[str, Any],
+    sound_pack: dict[str, Any] | None = None,
+) -> bytes:
     validate_score(score, sources)
     sample_rate = playback["sample_rate"]
     beat_seconds = 60.0 / float(score.get("tempo_bpm", 120))
@@ -148,6 +211,10 @@ def render_wav(score: dict[str, Any], sources: dict[str, dict[str, Any]], playba
         start = int(round(onset_s * sample_rate))
         count = max(1, int(math.ceil((duration_s + release) * sample_rate)))
         mode = profile["mode"]
+        binding = resolve_sound_binding(sound_pack, event) if sound_pack is not None else None
+        if binding is not None and _mix_sample_event(samples, start, duration_s, sample_rate, event, sound_pack, binding):
+            continue
+
         rng = random.Random(_event_seed(playback["seed"], event["id"]))
         phase = 0.0
         soft_noise = 0.0
@@ -198,5 +265,8 @@ def render_wav(score: dict[str, Any], sources: dict[str, dict[str, Any]], playba
     return output.getvalue()
 
 
-def write_wav(path: str | Path, score: dict[str, Any], sources: dict[str, dict[str, Any]], playback: dict[str, Any]) -> None:
-    Path(path).write_bytes(render_wav(score, sources, playback))
+def write_wav(
+    path: str | Path, score: dict[str, Any], sources: dict[str, dict[str, Any]], playback: dict[str, Any],
+    sound_pack: dict[str, Any] | None = None,
+) -> None:
+    Path(path).write_bytes(render_wav(score, sources, playback, sound_pack))
