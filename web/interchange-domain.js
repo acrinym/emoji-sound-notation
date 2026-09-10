@@ -37,14 +37,62 @@
     return {status: `midi_note${suffix}`, channel: mapping.channel + 1, note};
   }
 
+  function midiPlan(score, profile, noteToMidi) {
+    const reserved = new Set(profile.midi_sources.map(mapping => Number(mapping.channel)));
+    const auxiliaries = Array.from({length:16}, (_, channel) => channel).filter(channel => !reserved.has(channel) && channel !== 9);
+    const auxiliaryPrograms = new Map();
+    const activeUntil = new Map();
+    const tpq = Number(profile.ticks_per_quarter);
+    const entries = score.events.map((event, index) => {
+      const {mapping, note, losses} = eventMapping(event, profile, noteToMidi);
+      const onsetTick = halfUp(Number(event.onset) * tpq);
+      const durationTick = Math.max(1, halfUp(Number(event.duration) * tpq));
+      return {event, index, mapping, note, losses:[...losses], onsetTick, durationTick};
+    }).sort((a,b) => a.onsetTick - b.onsetTick || a.index - b.index);
+    const plan = new Map();
+    const activeKey = (channel, note) => `${channel}/${note}`;
+    for (const entry of entries) {
+      let channel = null;
+      if (entry.mapping && entry.note !== null) {
+        const base = Number(entry.mapping.channel);
+        const endTick = entry.onsetTick + entry.durationTick;
+        if ((activeUntil.get(activeKey(base, entry.note)) ?? -1) <= entry.onsetTick) channel = base;
+        else if (Object.hasOwn(entry.mapping, "program") && base !== 9) {
+          const program = Number(entry.mapping.program);
+          for (const candidate of auxiliaries) {
+            const owner = auxiliaryPrograms.get(candidate);
+            if (owner !== undefined && owner !== program) continue;
+            if ((activeUntil.get(activeKey(candidate, entry.note)) ?? -1) > entry.onsetTick) continue;
+            auxiliaryPrograms.set(candidate, program);
+            channel = candidate;
+            entry.losses.push("overlap_channel_reassigned");
+            break;
+          }
+        }
+        if (channel === null) entry.losses.push("same_note_overlap_cue_only");
+        else activeUntil.set(activeKey(channel, entry.note), endTick);
+      }
+      plan.set(entry.event.id, {...entry, channel});
+    }
+    return plan;
+  }
+
   function cueRows(score, profile, noteToMidi) {
     const beatSeconds = 60 / Number(score.tempo_bpm || 120);
+    const plan = midiPlan(score, profile, noteToMidi);
     return [...score.events]
       .sort((a, b) => Number(a.onset) - Number(b.onset) || a.id.localeCompare(b.id))
       .map(event => {
         const onset = Number(event.onset);
         const duration = Number(event.duration);
-        const mapped = classification(event, profile, noteToMidi);
+        const planned = plan.get(event.id);
+        let midiStatus;
+        if (planned.mapping && planned.note !== null && planned.channel !== null) {
+          midiStatus = `midi_note${planned.losses.length ? `:${planned.losses.join("+")}` : ""}`;
+        } else if (planned.losses.includes("same_note_overlap_cue_only")) midiStatus = "cue_only:same_note_overlap_cue_only";
+        else midiStatus = planned.losses[0] || "cue_only";
+        const midiChannel = planned.mapping ? (planned.channel ?? Number(planned.mapping.channel)) + 1 : "";
+        const midiNote = planned.note ?? "";
         let pitch = "";
         if (event.pitch?.note) pitch = `note:${event.pitch.note}`;
         else if (typeof event.pitch?.hz === "number") pitch = `hz:${event.pitch.hz}`;
@@ -56,7 +104,7 @@
           duration_seconds: (duration * beatSeconds).toFixed(6),
           pitch, dynamics: String(event.dynamics ?? 0.75),
           articulation: event.articulation ?? "normal",
-          midi_status: mapped.status, midi_channel: String(mapped.channel), midi_note: String(mapped.note),
+          midi_status: midiStatus, midi_channel: String(midiChannel), midi_note: String(midiNote),
         };
       });
   }
@@ -159,27 +207,31 @@
     ];
     const cueEvents = [{tick: 0, priority: 0, message: meta(0x03, asciiBytes("ESN Semantic Cues"))}];
     const sourceTracks = new Map();
+    const programmedChannels = new Set();
     const reportEvents = [];
+    const plan = midiPlan(score, profile, noteToMidi);
 
     for (const event of score.events) {
-      const onsetTick = halfUp(Number(event.onset) * tpq);
-      const durationTick = Math.max(1, halfUp(Number(event.duration) * tpq));
+      const planned = plan.get(event.id);
+      const onsetTick = planned.onsetTick;
+      const durationTick = planned.durationTick;
       const cue = asciiBytes(profile.cue_prefix + asciiJson(event));
       cueEvents.push({tick: onsetTick, priority: 10, message: meta(0x07, cue)});
-      const {mapping, note, losses} = eventMapping(event, profile, noteToMidi);
+      const {mapping, note, losses, channel} = planned;
       const row = {id: event.id, status: "cue_only", losses: [...losses]};
-      if (mapping) row.channel = mapping.channel;
-      if (mapping && note !== null) {
+      if (mapping) row.channel = channel === null ? Number(mapping.channel) : channel;
+      if (mapping && note !== null && channel !== null) {
         row.status = "midi_note";
         row.note = note;
-        const channel = Number(mapping.channel);
         const velocity = Math.max(1, Math.min(127, halfUp(Number(event.dynamics ?? 0.75) * 127)));
         if (!sourceTracks.has(event.source)) {
           sourceTracks.set(event.source, [{tick: 0, priority: 0, message: meta(0x03, asciiBytes(event.source))}]);
         }
         const events = sourceTracks.get(event.source);
-        if (events.length === 1 && Object.hasOwn(mapping, "program")) {
+        const programKey = `${event.source}/${channel}`;
+        if (Object.hasOwn(mapping, "program") && !programmedChannels.has(programKey)) {
           events.push({tick: 0, priority: 5, message: Uint8Array.of(0xc0 | channel, Number(mapping.program))});
+          programmedChannels.add(programKey);
         }
         events.push({tick: onsetTick, priority: 30, message: Uint8Array.of(0x90 | channel, note, velocity)});
         events.push({tick: onsetTick + durationTick, priority: 20, message: Uint8Array.of(0x80 | channel, note, 0)});
@@ -202,7 +254,7 @@
     return {bytes, report};
   }
 
-  const api = {classification, cueRows, cueCsv, midiBytes};
+  const api = {classification, cueRows, cueCsv, midiBytes, midiPlan};
   root.EsnInterchangeDomain = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : window);

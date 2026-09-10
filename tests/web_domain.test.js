@@ -74,7 +74,7 @@ test("browser cue CSV contains every semantic event with real-time timing", () =
 });
 
 const {createHash} = require("node:crypto");
-const {midiBytes} = require("../web/interchange-domain.js");
+const {midiBytes, midiPlan} = require("../web/interchange-domain.js");
 
 test("browser MIDI exporter stays byte-identical to the conformance artifact", () => {
   const {bytes, report} = midiBytes(score, interchange, noteToMidi);
@@ -83,4 +83,25 @@ test("browser MIDI exporter stays byte-identical to the conformance artifact", (
   assert.equal(report.midi_notes, 3);
   assert.equal(report.cue_only, 3);
   assert.equal(hash, "356D77D2EAE8DEDE53CCD18AAC8FBF337975665019CBB9E828F2347EC9BFCC14");
+});
+
+test("browser MIDI isolates overlapping same-note lifetimes", () => {
+  const overlap = {
+    format: "esn/1", title: "Overlap", tempo_bpm: 120,
+    events: [
+      {id:"first", source:"instrument:piano", gesture:"strike", onset:0, duration:2, pitch:{note:"C4"}, dynamics:0.7},
+      {id:"second", source:"instrument:piano", gesture:"strike", onset:1, duration:2, pitch:{note:"C4"}, dynamics:0.8},
+    ],
+  };
+  const plan = midiPlan(overlap, interchange, noteToMidi);
+  assert.equal(plan.get("first").channel, 0);
+  assert.equal(plan.get("second").channel, 2);
+  assert.ok(plan.get("second").losses.includes("overlap_channel_reassigned"));
+  const {bytes, report} = midiBytes(overlap, interchange, noteToMidi);
+  const hash = createHash("sha256").update(Buffer.from(bytes)).digest("hex").toUpperCase();
+  assert.equal(hash, "2FC7433B4B71D118821C59D30AB1A09664748025EDF291A00F177AFE437EA2A1");
+  assert.equal(report.midi_notes, 2);
+  const rows = cueRows(overlap, interchange, noteToMidi);
+  assert.equal(rows.find(row => row.id === "second").midi_channel, "3");
+  assert.match(rows.find(row => row.id === "second").midi_status, /overlap_channel_reassigned/);
 });

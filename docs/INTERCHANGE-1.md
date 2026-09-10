@@ -34,6 +34,10 @@ The reference exporter writes SMF Type 1 with a fixed ticks-per-quarter resoluti
 - Fixed mappings use the configured note while preserving timing and dynamics.
 - Program changes are emitted only when the mapping declares a program.
 - MIDI events are deterministically ordered at equal ticks so note-off precedes note-on.
+- Same-channel/same-note overlaps are planned before writing so an earlier note-off cannot truncate a later event.
+- When the mapping declares a program, a colliding event is reassigned to the lowest safe unused non-percussion channel and receives the same program change; its onset and duration remain exact.
+- Profile-declared channels stay reserved, and MIDI percussion channel 10 is never borrowed as an auxiliary pitched channel.
+- If no semantically safe auxiliary channel exists, the colliding event remains a timed semantic cue rather than emitting misleading playable MIDI.
 
 A final `ESN Semantic Cues` track contains standard Cue Point meta events. Cue text begins with the configured ASCII prefix and contains compact ASCII-safe JSON describing the complete ESN event.
 
@@ -47,6 +51,8 @@ The exporter returns a machine-readable report with counts and per-event classif
 - `cue_only`: no core MIDI mapping applied;
 - `pitch_required`: a pitched mapping could not run because the ESN event had no pitch;
 - `pitch_curve_flattened`: MIDI playback uses the event's starting pitch while the full curve remains in the semantic cue.
+- `overlap_channel_reassigned`: a playable event moved to a deterministic auxiliary channel to preserve an overlapping same-note lifetime exactly.
+- `same_note_overlap_cue_only`: no safe auxiliary channel existed, so the event is retained as a semantic cue instead of producing incorrect note timing.
 
 No ESN event is omitted from both MIDI and cue output.
 

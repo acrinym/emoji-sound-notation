@@ -91,3 +91,9 @@ The reference synth is a sketching aid for timing and pitch. It is not a realist
 The current useful promise is:
 
 > Build a mixed musical/non-musical sound scene, preview its structure, save and reopen it, and hand it off without losing the sounds that ordinary MIDI cannot represent directly.
+
+## Post-qualification MIDI overlap repair
+
+An adversarial review found that overlapping events mapped to the same MIDI channel and note could be truncated by the earlier event's note-off. The semantic cue survived, but the playable projection did not preserve the later event's declared duration.
+
+The exporter now plans note lifetimes before writing. Program-backed pitched mappings spill colliding notes onto deterministic auxiliary channels with the same program, preserving both start and end ticks. If no semantically safe channel exists, the later event stays cue-only instead of claiming incorrect playable timing. Python and browser exporters share the same rule and a parsed-SMF regression proves the two-event overlap case.

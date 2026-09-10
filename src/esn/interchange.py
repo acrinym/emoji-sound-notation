@@ -140,6 +140,48 @@ def _event_mapping(event: dict[str, Any], profile: dict[str, Any]) -> tuple[dict
         losses.append("pitch_curve_flattened")
     return mapping, max(0, min(127, note)), losses
 
+def _midi_plan(score: dict[str, Any], profile: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    reserved = {int(mapping["channel"]) for mapping in profile["mappings"].values()}
+    auxiliaries = [channel for channel in range(16) if channel not in reserved and channel != 9]
+    auxiliary_programs: dict[int, int] = {}
+    active_until: dict[tuple[int, int], int] = {}
+    entries = []
+    tpq = profile["ticks_per_quarter"]
+    for index, event in enumerate(score["events"]):
+        mapping, note, losses = _event_mapping(event, profile)
+        onset_tick = _round_half_up(float(event["onset"]) * tpq)
+        duration_tick = max(1, _round_half_up(float(event["duration"]) * tpq))
+        entries.append((onset_tick, index, event, mapping, note, list(losses), duration_tick))
+    plan: dict[str, dict[str, Any]] = {}
+    for onset_tick, _index, event, mapping, note, losses, duration_tick in sorted(entries, key=lambda item: (item[0], item[1])):
+        actual_channel = None
+        if mapping is not None and note is not None:
+            base_channel = int(mapping["channel"])
+            end_tick = onset_tick + duration_tick
+            if active_until.get((base_channel, note), -1) <= onset_tick:
+                actual_channel = base_channel
+            elif "program" in mapping and base_channel != 9:
+                program = int(mapping["program"])
+                for channel in auxiliaries:
+                    owner = auxiliary_programs.get(channel)
+                    if owner is not None and owner != program:
+                        continue
+                    if active_until.get((channel, note), -1) > onset_tick:
+                        continue
+                    auxiliary_programs[channel] = program
+                    actual_channel = channel
+                    losses.append("overlap_channel_reassigned")
+                    break
+            if actual_channel is None:
+                losses.append("same_note_overlap_cue_only")
+            else:
+                active_until[(actual_channel, note)] = end_tick
+        plan[event["id"]] = {
+            "mapping": mapping, "note": note, "losses": losses,
+            "channel": actual_channel, "onset_tick": onset_tick, "duration_tick": duration_tick,
+        }
+    return plan
+
 def export_smf(score: dict[str, Any], registry: dict[str, dict[str, Any]], profile: dict[str, Any]) -> tuple[bytes, dict[str, Any]]:
     validate_score(score, registry)
     tpq = profile["ticks_per_quarter"]
@@ -154,23 +196,26 @@ def export_smf(score: dict[str, Any], registry: dict[str, dict[str, Any]], profi
     ]
     cue_events: list[tuple[int, int, bytes]] = [(0, 0, _meta(0x03, b"ESN Semantic Cues"))]
     source_tracks: dict[str, list[tuple[int, int, bytes]]] = {}
+    programmed_channels: set[tuple[str, int]] = set()
     report_events: list[dict[str, Any]] = []
+    plan = _midi_plan(score, profile)
 
     for event in score["events"]:
-        onset_tick = _round_half_up(float(event["onset"]) * tpq)
-        duration_tick = max(1, _round_half_up(float(event["duration"]) * tpq))
+        planned = plan[event["id"]]
+        onset_tick, duration_tick = planned["onset_tick"], planned["duration_tick"]
         cue_events.append((onset_tick, 10, _meta(0x07, _event_cue(profile["cue_prefix"], event))))
-        mapping, note, losses = _event_mapping(event, profile)
+        mapping, note, losses, channel = planned["mapping"], planned["note"], planned["losses"], planned["channel"]
         row: dict[str, Any] = {"id": event["id"], "status": "cue_only", "losses": list(losses)}
         if mapping is not None:
-            row["channel"] = mapping["channel"]
-        if note is not None and mapping is not None:
+            row["channel"] = int(mapping["channel"]) if channel is None else channel
+        if note is not None and mapping is not None and channel is not None:
             row.update({"status": "midi_note", "note": note})
-            channel = int(mapping["channel"])
             velocity = max(1, min(127, _round_half_up(float(event.get("dynamics", 0.75)) * 127.0)))
             track = source_tracks.setdefault(event["source"], [(0, 0, _meta(0x03, _ascii_text(event["source"])))])
-            if len(track) == 1 and "program" in mapping:
+            program_key = (event["source"], channel)
+            if "program" in mapping and program_key not in programmed_channels:
                 track.append((0, 5, bytes([0xC0 | channel, int(mapping["program"])])))
+                programmed_channels.add(program_key)
             track.append((onset_tick, 30, bytes([0x90 | channel, note, velocity])))
             track.append((onset_tick + duration_tick, 20, bytes([0x80 | channel, note, 0])))
         report_events.append(row)
@@ -208,12 +253,16 @@ def cue_sheet_csv(score: dict[str, Any], registry: dict[str, dict[str, Any]], pr
     output = io.StringIO(newline="")
     writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
+    plan = _midi_plan(score, profile)
     for event in sorted(score["events"], key=lambda item: (float(item["onset"]), item["id"])):
         onset = float(event["onset"])
         duration = float(event["duration"])
-        mapping, note, losses = _event_mapping(event, profile)
-        if note is not None:
+        planned = plan[event["id"]]
+        mapping, note, losses, channel = planned["mapping"], planned["note"], planned["losses"], planned["channel"]
+        if note is not None and channel is not None:
             midi_status = "midi_note" + (":" + "+".join(losses) if losses else "")
+        elif "same_note_overlap_cue_only" in losses:
+            midi_status = "cue_only:same_note_overlap_cue_only"
         else:
             midi_status = losses[0] if losses else "cue_only"
         pitch = ""
@@ -230,7 +279,7 @@ def cue_sheet_csv(score: dict[str, Any], registry: dict[str, dict[str, Any]], pr
             "dynamics": f"{float(event.get('dynamics', 0.75)):g}",
             "articulation": event.get("articulation", "normal"),
             "midi_status": midi_status,
-            "midi_channel": "" if mapping is None else str(int(mapping["channel"]) + 1),
+            "midi_channel": "" if mapping is None else str((int(mapping["channel"]) if channel is None else channel) + 1),
             "midi_note": "" if note is None else str(note),
         })
     return output.getvalue()
