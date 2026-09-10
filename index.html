@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Emoji Sound Notation</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color:#202435; background:#f5f6fa; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; }
+    main { max-width:1080px; margin:auto; padding:64px 28px; }
+    .hero { display:grid; grid-template-columns:1.3fr .7fr; gap:40px; align-items:center; }
+    .eyebrow { font-size:13px; font-weight:700; color:#5668d8; text-transform:uppercase; letter-spacing:.08em; }
+    h1 { font-size:clamp(42px,7vw,76px); line-height:.95; margin:12px 0 20px; }
+    .lead { font-size:20px; line-height:1.55; color:#555d70; max-width:700px; }
+    .actions { display:flex; gap:12px; margin:28px 0; flex-wrap:wrap; }
+    .button { display:inline-block; text-decoration:none; border-radius:10px; padding:13px 18px; font-weight:700; }
+    .primary { background:#20243a; color:white; }
+    .secondary { border:1px solid #cdd1dc; color:#20243a; background:white; }
+    .preview { background:white; border:1px solid #dde0e8; border-radius:18px; padding:20px; box-shadow:0 14px 40px rgba(30,35,50,.08); }
+    .sound-row { display:flex; gap:10px; align-items:center; margin:12px 0; }
+    .dot { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; border:2px solid currentColor; font-weight:800; }
+    .red { color:#e74c3c; } .green { color:#22a95b; } .blue { color:#3277c9; } .gray { color:#596070; }
+    .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:52px; }
+    .card { background:white; border:1px solid #dde0e8; border-radius:14px; padding:20px; }
+    .card h2 { font-size:17px; margin:0 0 8px; }
+    .card p { color:#606779; line-height:1.5; margin:0; }
+    .try { margin-top:28px; padding:18px 20px; border-radius:14px; background:#eef1ff; border:1px solid #d8ddff; }
+    .try strong { display:block; margin-bottom:7px; }
+    footer { margin-top:42px; color:#73798a; font-size:13px; }
+    @media (max-width:760px) { .hero { grid-template-columns:1fr; } .cards { grid-template-columns:1fr; } main { padding-top:36px; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">A visual language for sound</div>
+      <h1>Draw a sound scene. Hear the sketch. Hand it off.</h1>
+      <p class="lead">Put instruments, animal calls, weather, Foley, and percussion on one timeline. Give pitch only to sounds that actually have pitch, preview its timing and pitch with a lightweight reference synth, then export it for the next person or tool.</p>
+      <div class="actions">
+        <a class="button primary" href="web/">Open the sound canvas</a>
+        <a class="button secondary" href="#what-you-get">What you get</a>
+      </div>
+      <div class="try">
+        <strong>Try it in 30 seconds</strong>
+        Click <b>Meow</b>, drag the new cat sound to where you want it, press <b>Preview</b>, then export a cue sheet or MIDI file.
+      </div>
+    </div>
+    <div class="preview" aria-label="Example sound scene">
+      <div class="sound-row"><span class="dot red">▥</span><div><b>Piano</b><br><small>C4 at beat 0</small></div></div>
+      <div class="sound-row"><span class="dot green">◉</span><div><b>Cat meow</b><br><small>E4 at beat 1</small></div></div>
+      <div class="sound-row"><span class="dot blue">◌</span><div><b>Bell</b><br><small>G5 at beat 2.5</small></div></div>
+      <div class="sound-row"><span class="dot gray">▰</span><div><b>Rain + door + drum</b><br><small>Unpitched sounds stay unpitched</small></div></div>
+    </div>
+  </section>
+  <section class="cards" id="what-you-get">
+    <div class="card"><h2>Build a scene</h2><p>Choose what makes a sound and what it does. Drag events through time and pitch.</p></div>
+    <div class="card"><h2>Preview the sketch</h2><p>Check timing and pitch with a lightweight reference synth before handing the scene to production.</p></div>
+    <div class="card"><h2>Hand it off</h2><p>Save the ESN project, make a production cue sheet, or export MIDI without dropping non-MIDI sounds.</p></div>
+  </section>
+  <footer>Local-first prototype. Your score stays on this machine unless you choose to export it.</footer>
+</main>
+</body>
+</html>

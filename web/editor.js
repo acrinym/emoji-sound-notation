@@ -11,6 +11,7 @@ const state = {
   registryDoc: null,
   playbackDoc: null,
   visualDoc: null,
+  interchangeDoc: null,
   colorMode: "pitch_class",
   sources: new Map(),
   profiles: new Map(),
@@ -21,28 +22,152 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const {noteToMidi, midiToNote} = EsnDomain;
 const {colorCueForMidi, glyphSvg} = EsnVisualDomain;
+const {cueCsv, midiBytes} = EsnInterchangeDomain;
 
 async function loadBundled() {
-  const [score, registryDoc, playbackDoc, visualDoc] = await Promise.all([
+  const [score, registryDoc, playbackDoc, visualDoc, interchangeDoc] = await Promise.all([
     fetch("../examples/first-score.esn.json").then(r => r.json()),
     fetch("../registries/core.json").then(r => r.json()),
     fetch("../playback/core.json").then(r => r.json()),
     fetch("../visual/core.json").then(r => r.json()),
+    fetch("../interchange/core.json").then(r => r.json()),
   ]);
-  state.score = structuredClone(score);
   state.registryDoc = registryDoc;
   state.playbackDoc = playbackDoc;
   state.visualDoc = visualDoc;
+  state.interchangeDoc = interchangeDoc;
   state.colorMode = visualDoc.default_mode;
   state.sources = new Map(registryDoc.sources.map(source => [source.id, source]));
   state.profiles = new Map(playbackDoc.profiles.map(profile => [`${profile.source}/${profile.gesture}`, profile]));
-  state.selectedId = null;
-  renderAll();
-  status(`Loaded ${score.events.length} events at ${score.tempo_bpm} BPM with ${visualDoc.name}.`);
+  applyScore(score, `Ready: ${score.events.length} sounds at ${score.tempo_bpm} BPM.`);
 }
 
 function sourceFor(event) {
   return state.sources.get(event.source);
+}
+
+function titleWords(value) {
+  return String(value).replace(/[-_]/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function sourceLabel(sourceId) {
+  return titleWords(String(sourceId).split(":").at(-1));
+}
+
+function actionLabel(gesture) {
+  return titleWords(gesture);
+}
+
+const SCORE_FIELDS = new Set(["format", "title", "tempo_bpm", "metadata", "events"]);
+const EVENT_FIELDS = new Set(["id", "source", "gesture", "onset", "duration", "pitch", "dynamics", "articulation", "pitch_curve"]);
+const ARTICULATIONS = new Set(["normal", "staccato", "tenuto", "accent", "legato"]);
+
+function finiteNumber(value, label, minimum = null) {
+  if (typeof value !== "number" || !Number.isFinite(value) || (minimum !== null && value < minimum)) {
+    throw new Error(`${label} is not a valid number.`);
+  }
+  return value;
+}
+
+function validatePitch(pitch, label) {
+  if (!pitch || typeof pitch !== "object" || Array.isArray(pitch)) throw new Error(`${label} must be a pitch object.`);
+  const keys = Object.keys(pitch);
+  if (keys.length !== 1 || !["note", "hz"].includes(keys[0])) throw new Error(`${label} must contain exactly note or hz.`);
+  if (keys[0] === "note") {
+    if (typeof pitch.note !== "string" || noteToMidi(pitch.note) === null) throw new Error(`${label} has an invalid note.`);
+  } else {
+    finiteNumber(pitch.hz, `${label}.hz`, Number.MIN_VALUE);
+  }
+}
+
+function validateProject(score) {
+  if (!score || typeof score !== "object" || Array.isArray(score)) throw new Error("Project root must be an object.");
+  const unknownScore = Object.keys(score).filter(key => !SCORE_FIELDS.has(key));
+  if (unknownScore.length) throw new Error(`Project contains unknown fields: ${unknownScore.join(", ")}.`);
+  if (score.format !== "esn/1") throw new Error("Project format must be esn/1.");
+  if (typeof score.title !== "string" || !score.title.trim()) throw new Error("Project title cannot be empty.");
+  finiteNumber(score.tempo_bpm ?? 120, "tempo_bpm", 1);
+  if ("metadata" in score && (!score.metadata || typeof score.metadata !== "object" || Array.isArray(score.metadata))) throw new Error("Project metadata must be an object.");
+  if (!Array.isArray(score.events)) throw new Error("Project events must be an array.");
+
+  const ids = new Set();
+  score.events.forEach((event, index) => {
+    const where = `Event ${index + 1}`;
+    if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error(`${where} must be an object.`);
+    const unknown = Object.keys(event).filter(key => !EVENT_FIELDS.has(key));
+    if (unknown.length) throw new Error(`${where} contains unknown fields: ${unknown.join(", ")}.`);
+    if (typeof event.id !== "string" || !event.id) throw new Error(`${where} needs an ID.`);
+    if (ids.has(event.id)) throw new Error(`Duplicate event ID: ${event.id}.`);
+    ids.add(event.id);
+    const source = state.sources.get(event.source);
+    if (!source) throw new Error(`${where} uses an unknown sound source: ${event.source}.`);
+    if (!source.gestures.includes(event.gesture)) throw new Error(`${where} uses an invalid action for ${sourceLabel(event.source)}.`);
+    finiteNumber(event.onset, `${where} onset`, 0);
+    finiteNumber(event.duration, `${where} duration`, 0.000001);
+    const dynamics = finiteNumber(event.dynamics ?? 0.75, `${where} loudness`, 0);
+    if (dynamics > 1) throw new Error(`${where} loudness must be between 0 and 1.`);
+    if (!ARTICULATIONS.has(event.articulation ?? "normal")) throw new Error(`${where} has an unknown articulation.`);
+    if (source.pitch_policy === "required" && !event.pitch) throw new Error(`${where} requires a pitch.`);
+    if (source.pitch_policy === "forbidden" && event.pitch) throw new Error(`${where} cannot have a pitch.`);
+    if (event.pitch) validatePitch(event.pitch, `${where} pitch`);
+    if (event.pitch_curve !== undefined) {
+      if (!event.pitch) throw new Error(`${where} pitch curve needs a starting pitch.`);
+      if (!Array.isArray(event.pitch_curve) || !event.pitch_curve.length) throw new Error(`${where} pitch curve must contain points.`);
+      let previous = -1;
+      event.pitch_curve.forEach((point, pointIndex) => {
+        if (!point || typeof point !== "object" || Array.isArray(point) || Object.keys(point).sort().join(",") !== "at,pitch") throw new Error(`${where} pitch curve point ${pointIndex + 1} is invalid.`);
+        finiteNumber(point.at, `${where} pitch curve position`, 0);
+        if (point.at > 1 || point.at <= previous) throw new Error(`${where} pitch curve positions must increase within 0..1.`);
+        previous = point.at;
+        validatePitch(point.pitch, `${where} pitch curve point ${pointIndex + 1}`);
+      });
+    }
+  });
+  return score;
+}
+
+function applyScore(score, message) {
+  validateProject(score);
+  state.score = structuredClone(score);
+  if (!("tempo_bpm" in state.score)) state.score.tempo_bpm = 120;
+  state.selectedId = null;
+  renderAll();
+  status(message);
+}
+
+function newScene() {
+  applyScore({format: "esn/1", title: "Untitled sound scene", tempo_bpm: 120, events: []}, "New empty sound scene ready.");
+}
+
+async function openProjectFile(file) {
+  try {
+    const parsed = JSON.parse(await file.text());
+    applyScore(parsed, `Opened ${file.name}: ${parsed.events.length} sounds at ${parsed.tempo_bpm ?? 120} BPM.`);
+  } catch (error) {
+    status(`Could not open project: ${error.message}`);
+  }
+}
+
+function renderSceneSettings() {
+  if (!state.score) return;
+  $("scene-title").value = state.score.title;
+  $("scene-tempo").value = state.score.tempo_bpm ?? 120;
+}
+
+function commitSceneSettings() {
+  const title = $("scene-title").value.trim();
+  const tempo = Number($("scene-tempo").value);
+  if (!title) {
+    $("scene-title").value = state.score.title;
+    return status("Scene title cannot be empty.");
+  }
+  if (!Number.isFinite(tempo) || tempo < 1) {
+    $("scene-tempo").value = state.score.tempo_bpm ?? 120;
+    return status("Tempo must be at least 1 BPM.");
+  }
+  state.score.title = title;
+  state.score.tempo_bpm = tempo;
+  status(`Scene updated: ${title} at ${tempo} BPM.`);
 }
 
 function profileFor(event) {
@@ -79,6 +204,7 @@ function eventTop(event) {
 }
 
 function renderAll() {
+  renderSceneSettings();
   renderVisualMode();
   renderPalette();
   renderRuler();
@@ -89,9 +215,9 @@ function renderAll() {
 function renderVisualMode() {
   $("color-mode").value = state.colorMode;
   const mode = state.colorMode === "pitch_class"
-    ? "absolute pitch class"
-    : `relative scale degree · tonic ${state.visualDoc.scale.tonic}`;
-  $("color-legend").textContent = `color: ${mode}`;
+    ? "same note name = same color"
+    : `scale steps relative to ${state.visualDoc.scale.tonic}`;
+  $("color-legend").textContent = `colors: ${mode}`;
 }
 
 function renderPalette() {
@@ -100,13 +226,13 @@ function renderPalette() {
   for (const source of state.registryDoc.sources) {
     const group = document.createElement("div");
     group.className = "source-group";
-    group.innerHTML = `<div class="source-name">${sourceGlyph(source.id, state.visualDoc.palettes.unpitched, 22)}<span>${source.id}</span></div>`;
+    group.innerHTML = `<div class="source-name" title="${source.id}">${sourceGlyph(source.id, state.visualDoc.palettes.unpitched, 22)}<span>${sourceLabel(source.id)}</span></div>`;
     const gestures = document.createElement("div");
     gestures.className = "gesture-list";
     for (const gesture of source.gestures) {
       const button = document.createElement("button");
       button.className = "gesture-button";
-      button.textContent = gesture;
+      button.textContent = actionLabel(gesture);
       button.addEventListener("click", () => addEvent(source, gesture));
       gestures.append(button);
     }
@@ -150,7 +276,7 @@ function renderTimeline() {
     const label = document.createElement("span");
     label.className = "lane-label";
     label.style.top = `${UNPITCHED_TOP + index * 46 + 8}px`;
-    label.textContent = source;
+    label.textContent = sourceLabel(source);
     root.append(label);
   });
 
@@ -166,7 +292,8 @@ function renderTimeline() {
     const color = eventColor(event);
     const cue = midi === null ? "unpitched" : colorCueForMidi(state.visualDoc, midi, state.colorMode).label;
     chip.style.color = color;
-    chip.innerHTML = `<span class="glyph">${sourceGlyph(event.source, color, 22)}</span><span class="meta">${event.gesture}${event.pitch?.note ? ` · ${event.pitch.note}` : ""} · ${cue}</span>`;
+    chip.innerHTML = `<span class="glyph">${sourceGlyph(event.source, color, 22)}</span><span class="meta">${actionLabel(event.gesture)}${event.pitch?.note ? ` · ${event.pitch.note}` : ""}</span>`;
+    chip.title = `${sourceLabel(event.source)} · ${actionLabel(event.gesture)} · ${cue}`;
     chip.addEventListener("click", e => {
       e.stopPropagation();
       state.selectedId = event.id;
@@ -227,7 +354,7 @@ function addEvent(source, gesture) {
   state.score.events.push(event);
   state.selectedId = event.id;
   renderAll();
-  status(`Added ${source.id} ${gesture}.`);
+  status(`Added ${sourceLabel(source.id)}: ${actionLabel(gesture)}.`);
 }
 
 function selectedEvent() {
@@ -241,14 +368,14 @@ function renderInspector() {
   if (!event) return;
   const source = sourceFor(event);
   $("event-id").value = event.id;
-  $("event-source").value = event.source;
+  $("event-source").value = sourceLabel(event.source);
   $("event-onset").value = event.onset;
   $("event-duration").value = event.duration;
   $("event-dynamics").value = event.dynamics ?? 0.75;
   $("pitch-row").hidden = source.pitch_policy === "forbidden";
   $("event-pitch").value = event.pitch?.note || "";
   const gestureSelect = $("event-gesture");
-  gestureSelect.replaceChildren(...source.gestures.map(gesture => new Option(gesture, gesture)));
+  gestureSelect.replaceChildren(...source.gestures.map(gesture => new Option(actionLabel(gesture), gesture)));
   gestureSelect.value = event.gesture;
 }
 
@@ -331,7 +458,7 @@ function playScore() {
   const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
   const base = ctx.currentTime + 0.05;
   for (const event of state.score.events) previewEvent(event, base + Number(event.onset) * beatSeconds);
-  status(`Playing ${state.score.events.length} events.`);
+  status(`Previewing ${state.score.events.length} sounds with the reference synth.`);
 }
 
 function canonical(value) {
@@ -342,16 +469,31 @@ function canonical(value) {
   return value;
 }
 
-function exportScore() {
-  const text = JSON.stringify(canonical(state.score), null, 2) + "\n";
-  const blob = new Blob([text], {type: "application/json"});
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "edited-score.esn.json";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-  status("Exported canonical-key-order ESN JSON.");
+}
+
+function exportScore() {
+  const text = JSON.stringify(canonical(state.score), null, 2) + "\n";
+  downloadBlob(new Blob([text], {type: "application/json"}), "sound-scene.esn.json");
+  status("Saved editable ESN project.");
+}
+
+function exportCueSheet() {
+  const text = cueCsv(state.score, state.interchangeDoc, noteToMidi);
+  downloadBlob(new Blob([text], {type: "text/csv;charset=utf-8"}), "sound-scene-cues.csv");
+  status(`Cue sheet ready: ${state.score.events.length} sounds with beat positions and timecodes.`);
+}
+
+function exportMidi() {
+  const {bytes, report} = midiBytes(state.score, state.interchangeDoc, noteToMidi);
+  downloadBlob(new Blob([bytes], {type: "audio/midi"}), "sound-scene.mid");
+  status(`MIDI ready: ${report.midi_notes} playable notes, ${report.cue_only} cue-only sounds, all ${report.events_total} preserved as timed ESN cues.`);
 }
 
 function status(message) {
@@ -364,14 +506,28 @@ for (const id of ["event-gesture","event-onset","event-duration","event-pitch","
 $("color-mode").addEventListener("change", event => {
   state.colorMode = event.target.value;
   renderAll();
-  status(`Visual color mode: ${state.colorMode}.`);
+  const meaning = state.colorMode === "pitch_class" ? "note names" : `scale steps relative to ${state.visualDoc.scale.tonic}`;
+  status(`Colors now show ${meaning}.`);
 });
+$("new-scene").addEventListener("click", newScene);
+$("open-project").addEventListener("click", () => $("project-file").click());
+$("project-file").addEventListener("change", async event => {
+  const file = event.target.files?.[0];
+  if (file) await openProjectFile(file);
+  event.target.value = "";
+});
+$("scene-title").addEventListener("change", commitSceneSettings);
+$("scene-tempo").addEventListener("change", commitSceneSettings);
 $("reload").addEventListener("click", loadBundled);
 $("play-score").addEventListener("click", playScore);
 $("export").addEventListener("click", exportScore);
+$("export-cues").addEventListener("click", exportCueSheet);
+$("export-midi").addEventListener("click", exportMidi);
 $("play-event").addEventListener("click", () => {
   const event = selectedEvent();
-  if (event) previewEvent(event);
+  if (!event) return;
+  previewEvent(event);
+  status(`Previewing ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} with the reference synth.`);
 });
 $("delete-event").addEventListener("click", () => {
   const event = selectedEvent();

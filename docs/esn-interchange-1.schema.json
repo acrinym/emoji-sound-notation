@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/esn/esn-interchange-1.schema.json",
+  "title": "ESN Interchange Binding 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "name", "ticks_per_quarter", "cue_prefix", "midi_sources"],
+  "properties": {
+    "format": {"const": "esn-interchange/1"},
+    "name": {"type": "string", "minLength": 1},
+    "ticks_per_quarter": {"type": "integer", "minimum": 24, "maximum": 32767},
+    "cue_prefix": {"type": "string", "minLength": 1, "maxLength": 32},
+    "midi_sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/mapping"}
+    }
+  },
+  "$defs": {
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "mode", "channel"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "mode": {"enum": ["pitched", "fixed"]},
+        "channel": {"type": "integer", "minimum": 0, "maximum": 15},
+        "program": {"type": "integer", "minimum": 0, "maximum": 127},
+        "note": {"type": "integer", "minimum": 0, "maximum": 127}
+      }
+    }
+  }
+}
