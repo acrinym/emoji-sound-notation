@@ -145,3 +145,61 @@ test("sound-pack description does not duplicate identical SPDX text", () => {
   const text = describePack(pack);
   assert.equal((text.match(/MIT/g) || []).length, 1);
 });
+
+
+const ScoreDomain = require("../web/score-domain.js");
+
+test("browser ESN2 score domain uses 96 BPM, 4/4 and A4=432 factory defaults", () => {
+  assert.deepEqual(ScoreDomain.factoryDefaults(), {
+    tempo_bpm: 96,
+    time_signature: {numerator: 4, denominator: 4},
+    key: {tonic: "C", scale: "major"},
+    tuning: {a4_hz: 432},
+  });
+  assert.equal(ScoreDomain.TICKS_PER_QUARTER, 9600);
+});
+
+test("browser ESN2 cat chords expand and explode like the Python score domain", () => {
+  const score2 = {
+    format:"esn/2", title:"Cat Chord", length_ticks:8*ScoreDomain.TICKS_PER_QUARTER,
+    defaults:ScoreDomain.factoryDefaults(),
+    tracks:[{id:"cats",name:"Cat Chorus",context:{},sections:[{
+      id:"cats-a",start_tick:0,end_tick:8*ScoreDomain.TICKS_PER_QUARTER,source:"animal:cat",context:{},
+      objects:[{id:"cat-c",type:"chord",gesture:"meow",tick:ScoreDomain.TICKS_PER_QUARTER,duration_ticks:ScoreDomain.TICKS_PER_QUARTER,root:"C4",quality:"major",inversion:0,dynamics:.8}],
+    }]}],
+  };
+  ScoreDomain.validateScoreV2(score2, registry, noteToMidi);
+  assert.deepEqual(ScoreDomain.expandChordPitches(score2.tracks[0].sections[0].objects[0], noteToMidi), ["C4","E4","G4"]);
+  const exploded = ScoreDomain.explodeChord(score2, "cat-c", registry, noteToMidi);
+  assert.deepEqual(exploded.tracks[0].sections[0].objects.map(obj => obj.pitch.note), ["C4","E4","G4"]);
+});
+
+test("browser section split is explicit and never invents a new source", () => {
+  const migrated = ScoreDomain.migrateV1ToV2(score, registry, noteToMidi);
+  const piano = migrated.tracks.find(track => track.sections[0].source === "instrument:piano");
+  const splitAt = 4 * ScoreDomain.TICKS_PER_QUARTER;
+  const split = ScoreDomain.splitSection(migrated, piano.id, piano.sections[0].id, splitAt);
+  assert.equal(split.tracks.find(track => track.id === piano.id).sections[1].source, null);
+});
+
+test("browser ESN1 migration preserves semantics and exact real-time placement", () => {
+  const migrated = ScoreDomain.migrateV1ToV2(score, registry, noteToMidi);
+  ScoreDomain.validateScoreV2(migrated, registry, noteToMidi);
+  const rows = ScoreDomain.documentRows(migrated, registry, noteToMidi);
+  const byId = new Map(rows.map(row => [row.event.id, row]));
+  assert.equal(migrated.defaults.tempo_bpm, 96);
+  assert.equal(migrated.defaults.tuning.a4_hz, 432);
+  assert.equal(byId.get("door-slam").onset_seconds, 3.75 * .625);
+  assert.ok(Math.abs(byId.get("door-slam").duration_seconds - (.22 * .625)) < 1e-12);
+});
+
+test("browser track/section context resolves independent tempo and tuning", () => {
+  const migrated = ScoreDomain.migrateV1ToV2(score, registry, noteToMidi);
+  const cat = migrated.tracks.find(track => track.sections[0].source === "animal:cat");
+  cat.context = {tempo_bpm:120, tuning:{a4_hz:444}};
+  cat.sections[0].context = {tempo_bpm:60, tuning:{a4_hz:432}};
+  const row = ScoreDomain.documentRows(migrated, registry, noteToMidi).find(item => item.event.id === "cat-meow");
+  assert.equal(row.tempo_bpm, 60);
+  assert.equal(row.a4_hz, 432);
+  assert.equal(row.onset_seconds, 1);
+});
