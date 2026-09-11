@@ -87,6 +87,15 @@ class ScoreGrammarTests(unittest.TestCase):
         self.assertIsNone(sections[1]["source"])
         self.assertEqual(sections[0]["objects"], before)
         self.assertEqual(sections[1]["objects"], [])
+        validate_score_v2(split, self.registry)
+
+    def test_repeated_split_uses_unique_section_ids(self):
+        score = self.cat_score()
+        score = split_section(score, "cats", "cats-a", 6 * TICKS_PER_QUARTER)
+        score = split_section(score, "cats", "cats-a", 3 * TICKS_PER_QUARTER)
+        sections = score["tracks"][0]["sections"]
+        self.assertEqual([section["id"] for section in sections], ["cats-a", "cats-a-split-2", "cats-a-split"])
+        validate_score_v2(score, self.registry)
 
     def test_migrate_v1_to_v2_preserves_legacy_event_meaning(self):
         migrated = migrate_v1_to_v2(self.legacy, self.registry)

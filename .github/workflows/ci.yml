@@ -23,19 +23,23 @@ jobs:
       - run: python -m json.tool interchange/core.json >/dev/null
       - run: python -m json.tool soundpacks/reference.json >/dev/null
       - run: python -m json.tool docs/esn-1.schema.json >/dev/null
+      - run: python -m json.tool docs/esn-2.schema.json >/dev/null
       - run: python -m json.tool docs/esn-playback-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-visual-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-interchange-1.schema.json >/dev/null
       - run: python -m json.tool docs/esn-sound-pack-1.schema.json >/dev/null
       - run: python -m json.tool examples/first-score.esn.json >/dev/null
+      - run: python -m json.tool examples/cat-counterpoint.esn.json >/dev/null
       - run: node --check web/esn-domain.js
       - run: node --check web/visual-domain.js
       - run: node --check web/interchange-domain.js
       - run: node --check web/sound-pack-domain.js
+      - run: node --check web/score-domain.js
       - run: node --check web/editor.js
       - run: node --test tests/web_domain.test.js
       - run: python -m unittest discover -s tests -v
       - run: esn validate examples/first-score.esn.json --registry registries/core.json
+      - run: esn validate examples/cat-counterpoint.esn.json --registry registries/core.json
       - run: esn visual-validate --visual visual/core.json --registry registries/core.json
       - run: esn interchange-validate --interchange interchange/core.json --registry registries/core.json
       - run: esn sound-pack-validate --sound-pack soundpacks/reference.json --registry registries/core.json
@@ -63,3 +67,16 @@ jobs:
       - run: esn cue-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/cues-a.csv
       - run: esn cue-export examples/first-score.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/cues-b.csv
       - run: cmp /tmp/cues-a.csv /tmp/cues-b.csv
+      - run: esn render examples/cat-counterpoint.esn.json --registry registries/core.json -o /tmp/esn2-a.svg
+      - run: esn render examples/cat-counterpoint.esn.json --registry registries/core.json -o /tmp/esn2-b.svg
+      - run: cmp /tmp/esn2-a.svg /tmp/esn2-b.svg
+      - run: esn audio examples/cat-counterpoint.esn.json --registry registries/core.json --playback playback/core.json -o /tmp/esn2-a.wav
+      - run: esn audio examples/cat-counterpoint.esn.json --registry registries/core.json --playback playback/core.json -o /tmp/esn2-b.wav
+      - run: cmp /tmp/esn2-a.wav /tmp/esn2-b.wav
+      - run: esn midi-export examples/cat-counterpoint.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/esn2-a.mid --report /tmp/esn2-report-a.json
+      - run: esn midi-export examples/cat-counterpoint.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/esn2-b.mid --report /tmp/esn2-report-b.json
+      - run: cmp /tmp/esn2-a.mid /tmp/esn2-b.mid
+      - run: cmp /tmp/esn2-report-a.json /tmp/esn2-report-b.json
+      - run: esn cue-export examples/cat-counterpoint.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/esn2-cues-a.csv
+      - run: esn cue-export examples/cat-counterpoint.esn.json --registry registries/core.json --interchange interchange/core.json -o /tmp/esn2-cues-b.csv
+      - run: cmp /tmp/esn2-cues-a.csv /tmp/esn2-cues-b.csv

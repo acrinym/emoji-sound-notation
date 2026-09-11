@@ -74,7 +74,7 @@
     },
     "section": {
       "type":"object","required":["id","start_tick","end_tick","source","objects"],"additionalProperties":false,
-      "properties":{"id":{"type":"string","minLength":1},"start_tick":{"type":"integer","minimum":0},"end_tick":{"type":"integer","minimum":1},"source":{"type":"string","minLength":1},"context":{"$ref":"#/$defs/partialContext"},"objects":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/noteEvent"},{"$ref":"#/$defs/chord"}]}}}
+      "properties":{"id":{"type":"string","minLength":1},"start_tick":{"type":"integer","minimum":0},"end_tick":{"type":"integer","minimum":1},"source":{"type":["string","null"],"minLength":1},"context":{"$ref":"#/$defs/partialContext"},"objects":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/noteEvent"},{"$ref":"#/$defs/chord"}]}}}
     },
     "track": {
       "type":"object","required":["id","name","sections"],"additionalProperties":false,

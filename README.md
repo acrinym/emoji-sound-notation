@@ -2,13 +2,13 @@
 
 **Working project name.** The permanent product name is intentionally not frozen yet.
 
-Emoji Sound Notation (ESN) is a source-aware visual language for music and sound. It can place instruments, animal calls, weather, Foley, percussion, and other sound events on one timeline without forcing every sound to behave like a musical note.
+Emoji Sound Notation (ESN) is a source-aware visual language for music and sound. It can compose instruments, animal calls, weather, Foley, percussion, and other sound events in one structured score without forcing every sound to behave like a musical note.
 
 The customer-facing workflow is simple:
 
 > Open → understand → add → edit → preview → save/open → hand off.
 
-The browser editor uses plain-language source names, a lightweight reference synth for timing/pitch preview, editable scene title and tempo, and direct project/CSV/MIDI export.
+The browser composer uses plain-language source names, explicit track and section structure, score/track musical context, chord authoring, a lightweight reference synth for timing/pitch preview, and direct project/CSV/MIDI export. ESN/1 files still open through deterministic migration into the ESN/2 score model.
 
 ## Start it
 
@@ -82,6 +82,21 @@ See [`docs/INTERCHANGE-1.md`](docs/INTERCHANGE-1.md).
 - Python sample-backed rendering remains deterministic for offline conformance.
 
 See [`docs/SOUND-PACK-1.md`](docs/SOUND-PACK-1.md).
+
+## Beadtrain 6 — Score grammar and multi-track composition
+
+- `esn/2` adds a real score hierarchy: score → tracks → sections → sound objects;
+- musical context resolves from score defaults through track and section overrides;
+- factory defaults are 96 BPM, 4/4, C major, and A4=432 Hz;
+- sections keep one explicit semantic source and split into unassigned empty sections rather than inventing a new source;
+- notes, unpitched/optional-pitch events, and first-class chords can coexist polyphonically;
+- chord authoring supports inversions, close/open voicing, optional arpeggiation, and explosion into independent notes;
+- ESN/1 projects migrate deterministically by semantic source while preserving event meaning and timing;
+- playback, visual, cue, MIDI, and sound-pack layers consume ESN/2 through a flattening adapter instead of owning the score grammar;
+- the browser is now a multi-track composer with track/section controls, chord creation/explosion, Save/New/Open, preview, and export;
+- [`examples/cat-counterpoint.esn.json`](examples/cat-counterpoint.esn.json) is the cat-heavy executable qualification score.
+
+See [`docs/ESN-2.md`](docs/ESN-2.md) and the Train 6 section of [`docs/CONSUMER-AUDIT.md`](docs/CONSUMER-AUDIT.md).
 
 ## CLI / conformance tools
 

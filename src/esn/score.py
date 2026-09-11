@@ -283,13 +283,18 @@ def _validate_track(track: Any, registry: dict[str, dict[str, Any]], length_tick
             raise ValidationError(f"{section_label} overlaps the previous section")
         previous_end = end
         source_id = section.get("source")
-        if source_id not in registry:
-            raise ValidationError(f"{section_label}.source is not registered: {source_id!r}")
-        source = registry[source_id]
-        _validate_context(section.get("context", {}), f"{section_label}.context")
         objects = section.get("objects")
         if not isinstance(objects, list):
             raise ValidationError(f"{section_label}.objects must be an array")
+        if source_id is None:
+            if objects:
+                raise ValidationError(f"{section_label}.source is required when the section contains objects")
+            source = None
+        elif source_id not in registry:
+            raise ValidationError(f"{section_label}.source is not registered: {source_id!r}")
+        else:
+            source = registry[source_id]
+        _validate_context(section.get("context", {}), f"{section_label}.context")
         for object_index, obj in enumerate(objects):
             object_label = f"{section_label}.objects[{object_index}]"
             object_id = obj.get("id") if isinstance(obj, dict) else None
@@ -317,8 +322,15 @@ def split_section(score: dict[str, Any], track_id: str, section_id: str, split_t
         if any(obj["tick"] >= split_tick or obj["tick"] + obj["duration_ticks"] > split_tick
                for obj in section["objects"]):
             raise ValidationError("split would move or cut existing objects; reposition them first")
+        used_section_ids = {item["id"] for candidate_track in result["tracks"] for item in candidate_track["sections"]}
+        split_base = f"{section_id}-split"
+        split_id = split_base
+        suffix = 2
+        while split_id in used_section_ids:
+            split_id = f"{split_base}-{suffix}"
+            suffix += 1
         right = {
-            "id": f"{section_id}-split",
+            "id": split_id,
             "start_tick": split_tick,
             "end_tick": section["end_tick"],
             "source": None,

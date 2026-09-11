@@ -149,3 +149,85 @@ The product can now say:
 > Build a mixed musical/non-musical sound scene, choose how its semantic sounds are realized locally, preview it, save/reopen the semantic project, and hand it off without tying the score to one sample library.
 
 The repository intentionally does not bundle third-party recordings. The built-in Reference Synth remains a deterministic fallback, while customers may load licensed sound-pack folders or their own WAV files locally.
+
+## Beadtrain 6 re-audit — ESN/2 score grammar and composition
+
+Train 6 was driven through the actual local product in Microsoft Edge with Playwright against `launch_esn.py` on September 10, 2026. The journey used the bundled `Cat Counterpoint` ESN/2 score and exercised score structure, semantic editing, project lifecycle, playback, and interchange through the customer UI.
+
+The preserved real-browser screenshots are part of the qualification record:
+
+![Train 6 cat counterpoint score](screenshots/train6/esn-train6-cat-score.png)
+
+![Train 6 selected cat chord and inspector](screenshots/train6/esn-train6-cat-chord.png)
+
+| Journey | Expected | Actual | Result |
+| --- | --- | --- | --- |
+| Open ESN/2 score | Cat Counterpoint loads as a structured score | 4 tracks, 5+ section bands, visible cat chords | PASS |
+| Factory context | New grammar exposes musical defaults | 96 BPM, 4/4, A4=432 visible | PASS |
+| Select cat chord | Chord is a first-class semantic object | Cat / Chord / C4 inspector, Explode available | PASS |
+| Independent context | Track overrides remain independent | Cat harmony showed 120 BPM and 3/4 | PASS |
+| Add track | New track begins semantically unassigned | Fresh track selected with empty source | PASS |
+| Assign section source | Source choice is explicit | New section assigned Cat | PASS |
+| Split section | Split never invents a semantic source | New right section created unassigned | PASS |
+| Reassign split | Empty split accepts an explicit source | Split section assigned Piano | PASS |
+| Create chord | Customer can author polyphony directly | D4 minor cat chord created | PASS |
+| Explode chord | Chord can become independent notes | Selection changed to Note after explosion | PASS |
+| Edit track tempo | Track context is live authoring state | Override changed to 108 BPM | PASS |
+| Save project | Product exports semantic ESN/2 | Saved file contains `format: esn/2`, tracks, sections | PASS |
+| New → Open | Lifecycle restores structured score | Cat Counterpoint and added fifth track restored | PASS |
+| Cue export | Loss-aware production handoff survives ESN/2 | 2,674-byte CSV | PASS |
+| MIDI export | Standards handoff remains real SMF | 4,290-byte file beginning `MThd` | PASS |
+| Preview | Structured score plays through browser audio | Status entered Playing state | PASS |
+| Responsive layout | No page-level horizontal overflow | 1600, 1280, and 1024 widths all fit | PASS |
+| Browser health | No runtime failures | 0 console errors, 0 page errors, 0 failed requests | PASS |
+
+The exact automated journey recorded **33/33 assertions green** with **0 browser errors**.
+
+### Train 6 browser receipts
+
+- saved ESN/2 SHA-256: `2D09ACB985D136AF9D875C9D89880F9DFC5138281F03B3F0F52521771AD913F0`;
+- cue CSV SHA-256: `885EA79B9620201D735691ED68824075B254D5FB88C70899C9479F33C441636F`;
+- MIDI SHA-256: `9FDCC79316FEE561A3D125495EC558F9ED3CC8D8C0025ED83467788D0B6B04D0`;
+- preserved score screenshot SHA-256: `63873A5796DEAA13FAD93B0F458455488C7BEA428DD54A79EA624C5BC8F6CD37`;
+- preserved selected-chord screenshot SHA-256: `5CEFE1C6C194C0EB99A820551ECA53386075490BFFD6ACBEAEC5AD5D25E58805`.
+
+The browser score-domain repeated-split regression is also locked by Node tests: repeated legal splits generate unique section IDs while invalid out-of-range split points are rejected.
+
+## Train 6 customer promise
+
+The product can now say:
+
+> Compose semantic sounds as a real multi-track score: give tracks and sections their own musical context, write notes or chords for cats and instruments, keep weather and Foley semantic, preview the result, save/reopen it, and export loss-aware handoffs without collapsing the score back into one flat timeline.
+
+## Train 6 final local qualification
+
+The finished 0.6.0 product tree was requalified after the browser split-regression repair, documentation/CI work, glyph-label repair, and final Edge pass.
+
+- Node browser-domain suite: **19/19 green**.
+- Python suite: **63/63 green**.
+- ESN/1 reference validation: **6 events valid**.
+- ESN/2 Cat Counterpoint validation: **4 tracks, 22 realized events**.
+- Visual profile: **7 glyphs valid**.
+- Interchange profile: **3 MIDI mappings valid**.
+- Reference sound pack: valid.
+- Beadtrains validator: **Trains 1–6 valid**.
+- `git diff --check`: green.
+- literal U+FFFD scan: **125 repository files, 0 hits**.
+
+Legacy deterministic receipts remained stable:
+
+- pitch-class SVG: `73587F4F2C4F621361481EFC4602879A052BE9264009E9F06C1D29B5E00DEFA4`;
+- reference WAV: `3C8B2F4FA2B1F7A9754DBAD25E4260EF0D3F3108D843FBB51EEA62D60AE85D8E`;
+- MIDI: `356D77D2EAE8DEDE53CCD18AAC8FBF337975665019CBB9E828F2347EC9BFCC14`;
+- MIDI loss report: `609649E0B0C91EA258E3957C77E53EB93C7D0CC061E2847E87FBE4A688EEFAFD`;
+- cue CSV: `58B7B4CCB8720460E1B51417B45EC1A74241488ACB06D8C3708B587EA473C984`.
+
+New deterministic ESN/2 Cat Counterpoint receipts:
+
+- flattened semantic SVG: `3D8E86B2867574120C747A3F45E3B554371BCB13C317A05991642D2580089D48`;
+- reference WAV: `7FA306A50F055660E78748C8960092F5082581A0FFB74F6B12D8555C9D5801B0`;
+- MIDI: `407C9B836689A1E860B4BEE5CE70BC1025061E9F5EFA81F3C156D07FCBC1B884`;
+- MIDI loss report: `3D3E0BB392764E6A3B45BCEE9D571349AFEE8FE5564F4BA39CE17CCDA67F3C5A`;
+- cue CSV: `076023A52FCECF9C567CBCEFBBD3C6335EFC699BC2A7411E419BBB2D51A74793`.
+
+The real Edge customer journey was rerun against this same finished tree on September 11, 2026 and again recorded **33/33 assertions green** with **0 browser errors**. The in-repository screenshots remain the preserved historical captures from the original qualification pass rather than being overwritten by later audit runs.

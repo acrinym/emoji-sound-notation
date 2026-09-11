@@ -11,107 +11,94 @@
   <header>
     <div class="brand-block">
       <h1>Emoji Sound Notation</h1>
-      <p>Build a sound scene, preview the sketch, and hand it off.</p>
+      <p>Compose whole audible works with semantic sound notation.</p>
     </div>
     <div class="toolbar">
       <label class="mode-control">Color meaning
-        <select id="color-mode" title="Change what event colors mean without changing the score">
-          <option value="pitch_class">Note names</option>
-          <option value="scale_degree">Scale steps</option>
-        </select>
+        <select id="color-mode"><option value="pitch_class">Note names</option><option value="scale_degree">Scale steps</option></select>
       </label>
-      <button id="new-scene" title="Start with an empty sound scene">New</button>
-      <button id="open-project" title="Open an ESN project from this computer">Open</button>
-      <input id="project-file" type="file" accept=".json,.esn.json,application/json" hidden>
-      <button id="reload" title="Restore the bundled example">Reset example</button>
-      <button id="play-score" title="Preview with the active sound pack, local samples, and reference fallback">▶ Preview scene</button>
-      <button id="export" title="Save an editable ESN project">Save project</button>
-      <button id="export-cues" title="CSV with beat positions and timecodes">Cue sheet</button>
-      <button id="export-midi" title="Standard MIDI File with timed ESN cue markers">MIDI</button>
+      <button id="new-scene">New</button><button id="open-project">Open</button>
+      <input id="project-file" type="file" accept=".json,.esn,.esn.json,application/json" hidden>
+      <button id="reload">Reset cats</button><button id="play-score">▶ Play score</button>
+      <button id="export">Save project</button><button id="export-cues">Cue sheet</button><button id="export-midi">MIDI</button>
     </div>
   </header>
-
   <main>
     <aside class="panel palette-panel">
-      <h2>Add a sound</h2>
-      <div class="quick-start">
-        <strong>Start here</strong>
-        <span>Choose what makes the sound, then click an action. Drag left/right for time. Pitched sounds can also move up/down; unpitched sounds stay in the lower rows.</span>
-      </div>
+      <h2>Sounds</h2>
+      <div class="quick-start"><strong>Mario Paint simple. Composer deep.</strong><span>Select a section, then choose an action. Drag notation left/right for time and up/down for pitch.</span></div>
+      <button id="add-track" class="wide-button">+ Track</button>
       <div id="palette"></div>
     </aside>
 
     <section class="workspace">
-      <div class="ruler" id="ruler"></div>
-      <div id="timeline" class="timeline" aria-label="Sound scene timeline"></div>
-      <div class="legend">
-        <span>↔ time</span>
-        <span>↕ pitch</span>
-        <span id="color-legend">colors: same note name = same color</span>
-        <span>unpitched sounds use rows below</span>
+      <div class="score-head">
+        <strong id="score-title-display">Score</strong>
+        <span id="score-context-display">96 BPM · 4/4 · C major · A4=432 Hz</span>
       </div>
+      <div class="ruler" id="ruler"></div>
+      <div id="timeline" class="timeline" aria-label="Multi-track sound score"></div>
+      <div class="legend"><span>↔ musical time</span><span>↕ pitch</span><span id="color-legend">colors: note names</span><span>one sound identity per section</span></div>
     </section>
 
     <aside class="panel inspector-panel">
-      <section class="scene-settings" aria-label="Scene settings">
-        <h2>Scene</h2>
+      <section class="scene-settings">
+        <h2>Score defaults</h2>
         <label>Title <input id="scene-title" maxlength="160"></label>
-        <label>Tempo (BPM) <input id="scene-tempo" type="number" min="1" step="1"></label>
+        <div class="two-col"><label>Tempo <input id="scene-tempo" type="number" min="1"></label><label>A4 Hz <input id="scene-tuning" type="number" min="1" step="0.1"></label></div>
+        <div class="two-col"><label>Meter <span class="inline-pair"><input id="scene-meter-num" type="number" min="1"><select id="scene-meter-den"><option>1</option><option>2</option><option selected>4</option><option>8</option><option>16</option></select></span></label><label>Key <span class="inline-pair"><input id="scene-key" value="C"><select id="scene-scale"></select></span></label></div>
+      </section>
+      <section class="track-settings">
+        <h2>Track</h2>
+        <label>Track <select id="track-select"></select></label>
+        <label>Name <input id="track-name"></label>
+        <div class="two-col"><label>Tempo override <input id="track-tempo" type="number" min="1" placeholder="inherit"></label><label>A4 override <input id="track-tuning" type="number" min="1" step="0.1" placeholder="inherit"></label></div>
+        <div class="two-col"><label>Meter override <span class="inline-pair"><input id="track-meter-num" type="number" min="1" placeholder="inherit"><select id="track-meter-den"><option value="">inherit</option><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option></select></span></label><label>Key override <span class="inline-pair"><input id="track-key" placeholder="inherit"><select id="track-scale"><option value="">inherit</option></select></span></label></div>
       </section>
 
-      <section class="sound-pack-settings" aria-label="Sound pack settings">
-        <h2>Sound pack</h2>
-        <strong id="pack-name">Reference Synth</strong>
-        <span id="pack-meta" class="field-help">Built-in sketch playback; no recorded samples.</span>
-        <div class="pack-actions">
-          <button type="button" id="load-pack">Load pack folder</button>
-          <button type="button" id="use-reference-pack">Reference synth</button>
-        </div>
+      <section class="section-settings">
+        <h2>Section</h2>
+        <label>Section <select id="section-select"></select></label>
+        <label>Sound identity <select id="section-source"></select></label>
+        <div class="split-control"><input id="section-split-beat" type="number" min="0" step="0.25" placeholder="beat"><button id="split-section" type="button">Split here</button></div>
+        <div class="two-col"><label>Tempo override <input id="section-tempo" type="number" min="1" placeholder="inherit"></label><label>A4 override <input id="section-tuning" type="number" min="1" step="0.1" placeholder="inherit"></label></div>
+        <div class="two-col"><label>Meter override <span class="inline-pair"><input id="section-meter-num" type="number" min="1" placeholder="inherit"><select id="section-meter-den"><option value="">inherit</option><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option></select></span></label><label>Key override <span class="inline-pair"><input id="section-key" placeholder="inherit"><select id="section-scale"><option value="">inherit</option></select></span></label></div>
+      </section>
+
+      <section class="chord-settings">
+        <h2>Harmony</h2>
+        <div class="two-col"><label>Root <input id="chord-root" value="C4"></label><label>Chord / scale <select id="chord-quality"></select></label></div>
+        <div class="two-col"><label>Inversion <input id="chord-inversion" type="number" min="0" value="0"></label><label>Voicing <select id="chord-voicing"><option value="close">Close</option><option value="open">Open</option></select></label></div>
+        <button id="add-chord" type="button" class="wide-button">Add chord</button>
+      </section>
+      <section class="sound-pack-settings">
+        <h2>Sound pack</h2><strong id="pack-name">Reference Synth</strong>
+        <span id="pack-meta" class="field-help">Built-in semantic sketch playback.</span>
+        <div class="pack-actions"><button type="button" id="load-pack">Load pack folder</button><button type="button" id="use-reference-pack">Reference synth</button></div>
         <input id="pack-folder" type="file" accept=".json,.wav,audio/wav" webkitdirectory directory multiple hidden>
       </section>
 
-      <h2>Selected sound</h2>
-      <div id="empty-inspector" class="empty-state">
-        <strong>Nothing selected yet.</strong>
-        <span>Click an event on the timeline to edit it, or add one from the left.</span>
-      </div>
+      <h2>Selected notation</h2>
+      <div id="empty-inspector" class="empty-state"><strong>Nothing selected.</strong><span>Click a note/chord, or add one from the Sounds panel.</span></div>
       <form id="inspector" hidden>
+        <label>Type <input id="event-type" readonly></label>
         <label>Sound source <input id="event-source" readonly></label>
         <label>Action <select id="event-gesture"></select></label>
-        <label>Starts at beat <input id="event-onset" type="number" min="0" step="0.25"></label>
-        <label>Length (beats) <input id="event-duration" type="number" min="0.01" step="0.25"></label>
-        <label id="pitch-row">Pitch <input id="event-pitch" placeholder="C4" aria-describedby="pitch-help"><span id="pitch-help" class="field-help">Example: C4, F#4, Bb3</span></label>
+        <div class="two-col"><label>Starts at beat <input id="event-onset" type="number" min="0" step="0.25"></label><label>Length <input id="event-duration" type="number" min="0.01" step="0.25"></label></div>
+        <label id="pitch-row">Pitch / chord root <input id="event-pitch" placeholder="C4"></label>
         <label>Loudness <input id="event-dynamics" type="range" min="0" max="1" step="0.01"></label>
-        <fieldset class="realization-control">
-          <legend>Playback realization</legend>
-          <strong id="event-realization">Reference synth</strong>
-          <span id="event-realization-detail" class="field-help">Uses the built-in sketch sound.</span>
-          <div class="pack-actions">
-            <button type="button" id="choose-sample">Use WAV sample</button>
-            <button type="button" id="clear-sample">Clear local sample</button>
-          </div>
-          <label>Sample root pitch (optional)<input id="sample-root" placeholder="C4"><span class="field-help">Use this when the WAV has a known pitch and should follow event pitch.</span></label>
-          <label class="checkbox-row"><input id="sample-loop" type="checkbox"> Loop sample to fill event</label>
-          <input id="sample-file" type="file" accept=".wav,audio/wav" hidden>
+        <div class="inspector-actions"><button type="button" id="play-event">▶ Preview</button><button type="button" id="explode-chord">Explode chord</button><button type="button" id="delete-event" class="danger">Delete</button></div>
+        <fieldset class="realization-control"><legend>Playback realization</legend><strong id="event-realization">Reference synth</strong><span id="event-realization-detail" class="field-help">Built-in sketch sound.</span>
+          <div class="pack-actions"><button type="button" id="choose-sample">Use WAV sample</button><button type="button" id="clear-sample">Clear local sample</button></div>
+          <label>Sample root pitch <input id="sample-root" placeholder="C4"></label><label class="checkbox-row"><input id="sample-loop" type="checkbox"> Loop sample</label><input id="sample-file" type="file" accept=".wav,audio/wav" hidden>
         </fieldset>
-        <div class="inspector-actions">
-          <button type="button" id="play-event" title="Preview this sound with its active realization">▶ Preview</button>
-          <button type="button" id="delete-event" class="danger">Delete</button>
-        </div>
-        <details class="advanced">
-          <summary>Advanced</summary>
-          <label>Event ID <input id="event-id" readonly></label>
-        </details>
+        <details class="advanced"><summary>Advanced</summary><label>Object ID <input id="event-id" readonly></label></details>
       </form>
       <pre id="status" aria-live="polite"></pre>
-      <div class="handoff-note">
-        <strong>What can I do with this?</strong>
-        <span><b>Preview</b> uses your active sound pack or local WAV overrides, with the reference synth as a safe fallback. <b>Save project</b> keeps the editable ESN semantics separate from playback assets. <b>Cue sheet</b> creates timecoded CSV. <b>MIDI</b> exports playable notes and preserves every sound as a timed cue marker.</span>
-      </div>
     </aside>
   </main>
-
   <script src="esn-domain.js"></script>
+  <script src="score-domain.js"></script>
   <script src="visual-domain.js"></script>
   <script src="interchange-domain.js"></script>
   <script src="sound-pack-domain.js"></script>

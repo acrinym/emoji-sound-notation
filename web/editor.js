@@ -1,777 +1,126 @@
 "use strict";
 
-const PX_PER_BEAT = 100;
-const SEMITONE_PX = 12;
-const TOP_MIDI = 84;
-const PITCH_TOP = 38;
-const UNPITCHED_TOP = 510;
+const PX_PER_BEAT=100, Q=EsnScoreDomain.TICKS_PER_QUARTER, TRACK_PITCH_TOP=38, SEMITONE_PX=8, TOP_MIDI=84;
+const SCALE_NAMES=["major","minor","major_pentatonic","minor_pentatonic","chromatic"];
+const CHORD_QUALITIES=["major","minor","major_pentatonic","minor_pentatonic","diminished","augmented","sus2","sus4","dominant7","major7","minor7"];
+const state={score:null,registryDoc:null,playbackDoc:null,visualDoc:null,interchangeDoc:null,soundPackDoc:null,referenceSoundPackDoc:null,soundPackManifestPath:"",soundPackFiles:new Map(),localSamples:new Map(),sampleBuffers:new Map(),sources:new Map(),profiles:new Map(),selectedTrackId:null,selectedSectionId:null,selectedObjectId:null,colorMode:"pitch_class",audio:null,ignoreTimelineClick:false};
+const $=id=>document.getElementById(id);
+const {noteToMidi,midiToNote}=EsnDomain;
+const {factoryDefaults,migrateV1ToV2,validateScoreV2,resolveContext,splitSection,assignSectionSource,explodeChord,documentRows,expandChordPitches}=EsnScoreDomain;
+const {colorCueForMidi,glyphSvg}=EsnVisualDomain;
+const {cueCsv,midiBytes}=EsnInterchangeDomain;
+const {validatePack,resolveBinding,fileKeyFor,describePack}=EsnSoundPackDomain;
 
-const state = {
-  score: null,
-  registryDoc: null,
-  playbackDoc: null,
-  visualDoc: null,
-  interchangeDoc: null,
-  soundPackDoc: null,
-  referenceSoundPackDoc: null,
-  soundPackManifestPath: "",
-  soundPackFiles: new Map(),
-  localSamples: new Map(),
-  sampleBuffers: new Map(),
-  colorMode: "pitch_class",
-  sources: new Map(),
-  profiles: new Map(),
-  selectedId: null,
-  audio: null,
-  ignoreTimelineClick: false,
-};
-
-const $ = (id) => document.getElementById(id);
-const {noteToMidi, midiToNote} = EsnDomain;
-const {colorCueForMidi, glyphSvg} = EsnVisualDomain;
-const {cueCsv, midiBytes} = EsnInterchangeDomain;
-const {validatePack, resolveBinding, fileKeyFor, describePack} = EsnSoundPackDomain;
-
-async function loadBundled() {
-  const [score, registryDoc, playbackDoc, visualDoc, interchangeDoc, soundPackDoc] = await Promise.all([
-    fetch("../examples/first-score.esn.json").then(r => r.json()),
-    fetch("../registries/core.json").then(r => r.json()),
-    fetch("../playback/core.json").then(r => r.json()),
-    fetch("../visual/core.json").then(r => r.json()),
-    fetch("../interchange/core.json").then(r => r.json()),
-    fetch("../soundpacks/reference.json").then(r => r.json()),
-  ]);
-  state.registryDoc = registryDoc;
-  state.playbackDoc = playbackDoc;
-  state.visualDoc = visualDoc;
-  state.interchangeDoc = interchangeDoc;
-  state.soundPackDoc = validatePack(soundPackDoc, registryDoc, noteToMidi);
-  state.referenceSoundPackDoc = structuredClone(state.soundPackDoc);
-  state.soundPackManifestPath = "soundpacks/reference.json";
-  state.soundPackFiles = new Map();
-  state.colorMode = visualDoc.default_mode;
-  state.sources = new Map(registryDoc.sources.map(source => [source.id, source]));
-  state.profiles = new Map(playbackDoc.profiles.map(profile => [`${profile.source}/${profile.gesture}`, profile]));
-  applyScore(score, `Ready: ${score.events.length} sounds at ${score.tempo_bpm} BPM.`);
+function clone(value){return structuredClone(value)}
+function words(value){return String(value).replace(/[-_]/g," ").replace(/\b\w/g,c=>c.toUpperCase())}
+function sourceLabel(id){return id?words(String(id).split(":").at(-1)):"Unassigned"}
+function actionLabel(id){return words(id)}
+function sourceGlyph(id,color,size=22){return id?glyphSvg(state.visualDoc,id,color,size):"＋"}
+function sourceDoc(id){return state.sources.get(id)||null}
+function currentTrack(){return state.score?.tracks.find(t=>t.id===state.selectedTrackId)||state.score?.tracks[0]||null}
+function currentSection(){const t=currentTrack();return t?.sections.find(s=>s.id===state.selectedSectionId)||t?.sections[0]||null}
+function locateObject(id=state.selectedObjectId){for(const track of state.score?.tracks||[])for(const section of track.sections){const obj=section.objects.find(o=>o.id===id);if(obj)return{track,section,obj}}return null}
+function sectionContext(track,section){return resolveContext(state.score.defaults,track.context||{},section.context||{})}
+function maxBeats(){return state.score?state.score.length_ticks/Q:16}
+function contextText(ctx){return `${ctx.tempo_bpm} BPM · ${ctx.time_signature.numerator}/${ctx.time_signature.denominator} · ${ctx.key.tonic} ${words(ctx.key.scale)} · A4=${ctx.tuning.a4_hz} Hz`}
+async function loadBundled(){
+  const [score,registry,playback,visual,interchange,pack]=await Promise.all([
+    fetch("../examples/cat-counterpoint.esn.json").then(r=>r.json()),fetch("../registries/core.json").then(r=>r.json()),fetch("../playback/core.json").then(r=>r.json()),fetch("../visual/core.json").then(r=>r.json()),fetch("../interchange/core.json").then(r=>r.json()),fetch("../soundpacks/reference.json").then(r=>r.json())]);
+  state.registryDoc=registry;state.playbackDoc=playback;state.visualDoc=visual;state.interchangeDoc=interchange;
+  state.sources=new Map(registry.sources.map(s=>[s.id,s]));state.profiles=new Map(playback.profiles.map(p=>[`${p.source}/${p.gesture}`,p]));
+  state.soundPackDoc=validatePack(pack,registry,noteToMidi);state.referenceSoundPackDoc=clone(state.soundPackDoc);state.soundPackManifestPath="soundpacks/reference.json";state.colorMode=visual.default_mode;
+  applyScore(score,"Cat Counterpoint loaded. Yes, the cats have chords. 😹");
 }
-
-function sourceFor(event) {
-  return state.sources.get(event.source);
+function normalizeScore(score){const migrated=score.format==="esn/1"?migrateV1ToV2(score,state.registryDoc,noteToMidi):clone(score);validateScoreV2(migrated,state.registryDoc,noteToMidi);return migrated}
+function applyScore(score,message){state.score=normalizeScore(score);state.selectedTrackId=state.score.tracks[0]?.id||null;state.selectedSectionId=state.score.tracks[0]?.sections[0]?.id||null;state.selectedObjectId=null;renderAll();status(message)}
+function status(message){$("status").textContent=message}
+function profileFor(event){return state.profiles.get(`${event.source}/${event.gesture}`)||state.profiles.get(`${event.source}/*`)||null}
+function realizationKey(event){return `${event.source}/${event.gesture}`}
+function localSampleFor(event){return state.localSamples.get(realizationKey(event))||null}
+function packBindingFor(event){return state.soundPackDoc?resolveBinding(state.soundPackDoc,event):null}
+function packAvailability(){let missing=0;for(const binding of state.soundPackDoc?.bindings||[]){if(!state.soundPackFiles.has(fileKeyFor(state.soundPackManifestPath,binding.asset)))missing++}return{bindings:state.soundPackDoc?.bindings.length||0,missing}}
+function renderPackSettings(){const a=packAvailability();$("pack-name").textContent=state.soundPackDoc?.name||"Reference Synth";const d=state.soundPackDoc?describePack(state.soundPackDoc):"";$("pack-meta").textContent=a.bindings?`${d} · ${a.bindings-a.missing}/${a.bindings} samples available.`:`${d} · Built-in sketch playback.`}
+function effectiveRealization(event){const local=localSampleFor(event);if(local)return{kind:"sample",origin:"local",name:local.file.name,file:local.file,gain:1,loop:local.loop,root_note:local.root_note||null};const binding=packBindingFor(event);if(!binding)return{kind:"reference",origin:"reference",name:"Reference synth"};const file=state.soundPackFiles.get(fileKeyFor(state.soundPackManifestPath,binding.asset));if(!file)return{kind:"reference",origin:"missing",name:"Reference synth",missing:binding.asset};return{kind:"sample",origin:"pack",name:binding.asset,file,gain:binding.gain??1,loop:Boolean(binding.loop),root_note:binding.root_note||null,credit:binding.credit||""}}
+function setupStaticSelects(){
+  for(const id of ["scene-scale","track-scale","section-scale"]){const sel=$(id);const inherit=id==="scene-scale"?[]:[new Option("inherit","")];sel.replaceChildren(...inherit,...SCALE_NAMES.map(v=>new Option(words(v),v)))}
+  $("scene-scale").value="major";
+  $("chord-quality").replaceChildren(...CHORD_QUALITIES.map(v=>new Option(words(v),v)));
+  $("chord-quality").value="major";
+  $("section-source").replaceChildren(new Option("Unassigned",""),...state.registryDoc.sources.map(s=>new Option(`${s.glyph} ${sourceLabel(s.id)}`,s.id)));
 }
-
-function titleWords(value) {
-  return String(value).replace(/[-_]/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+function renderScoreSettings(){const d=state.score.defaults;$("scene-title").value=state.score.title;$("scene-tempo").value=d.tempo_bpm;$("scene-tuning").value=d.tuning.a4_hz;$("scene-meter-num").value=d.time_signature.numerator;$("scene-meter-den").value=d.time_signature.denominator;$("scene-key").value=d.key.tonic;$("scene-scale").value=d.key.scale;$("score-title-display").textContent=state.score.title;$("score-context-display").textContent=contextText(d)}
+function contextToInputs(prefix,context){$(prefix+"tempo").value=context.tempo_bpm??"";$(prefix+"tuning").value=context.tuning?.a4_hz??"";$(prefix+"meter-num").value=context.time_signature?.numerator??"";$(prefix+"meter-den").value=context.time_signature?.denominator??"";$(prefix+"key").value=context.key?.tonic??"";$(prefix+"scale").value=context.key?.scale??""}
+function inputsToContext(prefix){const out={};const tempo=Number($(prefix+"tempo").value);if($(prefix+"tempo").value&&tempo>0)out.tempo_bpm=tempo;const tuning=Number($(prefix+"tuning").value);if($(prefix+"tuning").value&&tuning>0)out.tuning={a4_hz:tuning};const num=Number($(prefix+"meter-num").value),den=Number($(prefix+"meter-den").value);if($(prefix+"meter-num").value&&$(prefix+"meter-den").value)out.time_signature={numerator:num,denominator:den};const key=$(prefix+"key").value.trim(),scale=$(prefix+"scale").value;if(key&&scale)out.key={tonic:key,scale};return out}
+function renderTrackSettings(){const track=currentTrack();$("track-select").replaceChildren(...state.score.tracks.map(t=>new Option(t.name,t.id)));if(!track)return;$("track-select").value=track.id;$("track-name").value=track.name;contextToInputs("track-",track.context||{})}
+function renderSectionSettings(){const track=currentTrack(),section=currentSection();$("section-select").replaceChildren(...((track?.sections||[]).map((s,i)=>new Option(`${i+1}. ${sourceLabel(s.source)} · beats ${(s.start_tick/Q).toFixed(2)}–${(s.end_tick/Q).toFixed(2)}`,s.id))));if(!section)return;$("section-select").value=section.id;$("section-source").value=section.source||"";contextToInputs("section-",section.context||{});$("section-split-beat").value=((section.start_tick+section.end_tick)/(2*Q)).toFixed(2)}
+function commitScoreSettings(){
+  const title=$("scene-title").value.trim(),tempo=Number($("scene-tempo").value),a4=Number($("scene-tuning").value),num=Number($("scene-meter-num").value),den=Number($("scene-meter-den").value),tonic=$("scene-key").value.trim(),scale=$("scene-scale").value;
+  const before=clone(state.score);try{state.score.title=title;state.score.defaults={tempo_bpm:tempo,time_signature:{numerator:num,denominator:den},key:{tonic,scale},tuning:{a4_hz:a4}};validateScoreV2(state.score,state.registryDoc,noteToMidi);renderAll();status(`Score defaults updated: ${contextText(state.score.defaults)}.`)}catch(error){state.score=before;renderAll();status(`Score change rejected: ${error.message}`)}
 }
-
-function sourceLabel(sourceId) {
-  return titleWords(String(sourceId).split(":").at(-1));
+function commitTrackSettings(){const track=currentTrack();if(!track)return;const before=clone(state.score);try{track.name=$("track-name").value.trim()||track.name;track.context=inputsToContext("track-");validateScoreV2(state.score,state.registryDoc,noteToMidi);renderAll();status(`Track updated: ${track.name} · ${contextText(resolveContext(state.score.defaults,track.context,{}))}.`)}catch(error){state.score=before;renderAll();status(`Track change rejected: ${error.message}`)}}
+function commitSectionContext(){const section=currentSection();if(!section)return;const before=clone(state.score);try{section.context=inputsToContext("section-");validateScoreV2(state.score,state.registryDoc,noteToMidi);renderAll();status(`Section context updated: ${contextText(sectionContext(currentTrack(),currentSection()))}.`)}catch(error){state.score=before;renderAll();status(`Section change rejected: ${error.message}`)}}
+function changeSectionSource(){const track=currentTrack(),section=currentSection(),sourceId=$("section-source").value;if(!track||!section)return;if(!sourceId){if(section.objects.length){$("section-source").value=section.source||"";return status("A populated section cannot be unassigned. Move/delete its notation first.")}section.source=null;renderAll();return status("Section is unassigned. Choose its sound identity before adding notation.")}try{state.score=assignSectionSource(state.score,track.id,section.id,sourceId,state.registryDoc);state.selectedSectionId=section.id;renderAll();status(`Section assigned to ${sourceLabel(sourceId)}.`)}catch(error){renderAll();status(`Source change rejected: ${error.message}`)}}
+function doSplitSection(){const track=currentTrack(),section=currentSection(),beat=Number($("section-split-beat").value);if(!track||!section||!Number.isFinite(beat))return;const tick=Math.round(beat*Q);try{const oldId=section.id;state.score=splitSection(state.score,track.id,oldId,tick);const updated=state.score.tracks.find(t=>t.id===track.id);const created=updated.sections.find(s=>s.start_tick===tick&&s.source===null);state.selectedTrackId=track.id;state.selectedSectionId=created?.id||oldId;state.selectedObjectId=null;renderAll();status(`Track split at beat ${beat.toFixed(2)}. New section is intentionally unassigned.`)}catch(error){status(`Split rejected: ${error.message}`)}}
+function renderPalette(){const root=$("palette"),section=currentSection();root.replaceChildren();for(const source of state.registryDoc.sources){const group=document.createElement("div");group.className="source-group";group.innerHTML=`<div class="source-name">${sourceGlyph(source.id,state.visualDoc.palettes.unpitched,22)}<span>${sourceLabel(source.id)}</span></div>`;const gestures=document.createElement("div");gestures.className="gesture-list";for(const gesture of source.gestures){const button=document.createElement("button");button.className="gesture-button";button.textContent=actionLabel(gesture);button.disabled=section?.source!==source.id;button.title=button.disabled?`Assign the selected section to ${sourceLabel(source.id)} first`:`Add ${sourceLabel(source.id)} ${actionLabel(gesture)}`;button.onclick=()=>addObject(source,gesture);gestures.append(button)}group.append(gestures);root.append(group)}}
+function renderRuler(){const ruler=$("ruler");ruler.replaceChildren();ruler.style.width=`${145+maxBeats()*PX_PER_BEAT}px`;for(let beat=0;beat<=maxBeats();beat++){const mark=document.createElement("div");mark.className="ruler-mark";mark.style.left=`${145+beat*PX_PER_BEAT}px`;mark.textContent=beat+1;ruler.append(mark)}}
+function objectMidi(obj,ctx){if(obj.type==="chord")return noteToMidi(obj.root);if(obj.pitch?.note)return noteToMidi(obj.pitch.note);if(typeof obj.pitch?.hz==="number")return 69+12*Math.log2(obj.pitch.hz/ctx.tuning.a4_hz);return null}
+function objectColor(obj,ctx){const midi=objectMidi(obj,ctx);return midi===null?state.visualDoc.palettes.unpitched:colorCueForMidi(state.visualDoc,midi,state.colorMode).color}
+function objectTop(obj,ctx){const midi=objectMidi(obj,ctx);return midi===null?104:34+Math.max(0,Math.min(40,(TOP_MIDI-midi)))*3.05}
+function renderObject(track,section,obj,canvas){const ctx=sectionContext(track,section),color=objectColor(obj,ctx),chip=document.createElement("div");chip.className=`notation-object ${obj.type}${obj.id===state.selectedObjectId?" selected":""}`;chip.dataset.id=obj.id;chip.style.left=`${obj.tick/Q*PX_PER_BEAT+2}px`;chip.style.top=`${objectTop(obj,ctx)}px`;chip.style.width=`${Math.max(42,obj.duration_ticks/Q*PX_PER_BEAT-4)}px`;chip.style.color=color;let body;if(obj.type==="chord"){const notes=expandChordPitches(obj,noteToMidi);body=`<span class="chord-stack">${notes.map(()=>sourceGlyph(section.source,color,18)).join("")}</span><span class="object-meta">${obj.root} ${words(obj.quality)}</span>`}else{body=`<span class="glyph">${sourceGlyph(section.source,color,20)}</span><span class="object-meta">${actionLabel(obj.gesture)}${obj.pitch?.note?` · ${obj.pitch.note}`:""}</span>`}chip.innerHTML=body;chip.title=obj.type==="chord"?`${sourceLabel(section.source)} ${obj.gesture}: ${obj.root} ${obj.quality} chord`:`${sourceLabel(section.source)} ${obj.gesture}`;chip.onclick=e=>{e.stopPropagation();state.selectedTrackId=track.id;state.selectedSectionId=section.id;state.selectedObjectId=obj.id;renderAll()};installDrag(chip,track,section,obj);canvas.append(chip)}
+function renderTimeline(){const root=$("timeline");root.replaceChildren();const totalWidth=145+maxBeats()*PX_PER_BEAT;root.style.width=`${Math.max(1000,totalWidth+16)}px`;for(const track of state.score.tracks){const row=document.createElement("div");row.className="track-row";row.style.width=`${totalWidth}px`;const head=document.createElement("div");head.className=`track-header${track.id===state.selectedTrackId?" selected":""}`;const base=resolveContext(state.score.defaults,track.context||{},{});head.innerHTML=`<div class="track-name">${track.name}</div><span class="track-context-badge">${contextText(base)}</span>`;head.onclick=()=>{state.selectedTrackId=track.id;state.selectedSectionId=track.sections[0]?.id||null;state.selectedObjectId=null;renderAll()};row.append(head);const canvas=document.createElement("div");canvas.className="track-canvas";canvas.style.width=`${maxBeats()*PX_PER_BEAT}px`;const measure=base.time_signature.numerator*(4/base.time_signature.denominator);for(let beat=0;beat<=maxBeats();beat++){const line=document.createElement("div");line.className=(beat%measure===0)?"measure-accent":"beat-accent";line.style.left=`${beat*PX_PER_BEAT}px`;canvas.append(line)}for(const section of track.sections){const band=document.createElement("div");band.className=`section-band${section.source?"":" unassigned"}${section.id===state.selectedSectionId?" selected":""}`;band.style.left=`${section.start_tick/Q*PX_PER_BEAT}px`;band.style.width=`${(section.end_tick-section.start_tick)/Q*PX_PER_BEAT}px`;const ctx=sectionContext(track,section);band.textContent=section.source?`${sourceDoc(section.source)?.glyph||""} ${sourceLabel(section.source)} · ${ctx.time_signature.numerator}/${ctx.time_signature.denominator}`:"＋ Unassigned section";band.onclick=e=>{e.stopPropagation();state.selectedTrackId=track.id;state.selectedSectionId=section.id;state.selectedObjectId=null;renderAll()};canvas.append(band);for(const obj of section.objects)renderObject(track,section,obj,canvas)}canvas.onclick=e=>{if(e.target!==canvas)return;state.selectedTrackId=track.id;state.selectedObjectId=null;const tick=Math.round((e.offsetX/PX_PER_BEAT)*Q);state.selectedSectionId=track.sections.find(s=>s.start_tick<=tick&&tick<s.end_tick)?.id||track.sections[0]?.id||null;renderAll()};row.append(canvas);root.append(row)}}
+function installDrag(element,track,section,obj){element.addEventListener("pointerdown",down=>{down.stopPropagation();element.setPointerCapture(down.pointerId);const sx=down.clientX,sy=down.clientY,originalTick=obj.tick,ctx=sectionContext(track,section),originalMidi=objectMidi(obj,ctx);let moved=false;const move=event=>{const dx=event.clientX-sx,dy=event.clientY-sy;if(!moved&&Math.abs(dx)<3&&Math.abs(dy)<3)return;moved=true;const deltaTicks=Math.round((dx/PX_PER_BEAT)*4)*(Q/4);obj.tick=Math.max(section.start_tick,Math.min(section.end_tick-obj.duration_ticks,originalTick+deltaTicks));if(originalMidi!==null){const semitones=Math.round(-dy/12);const note=midiToNote(originalMidi+semitones);if(obj.type==="chord")obj.root=note;else{obj.pitch={note};delete obj.pitch_curve}}element.style.left=`${obj.tick/Q*PX_PER_BEAT+2}px`;element.style.top=`${objectTop(obj,ctx)}px`};const up=()=>{element.removeEventListener("pointermove",move);if(!moved)return;try{validateScoreV2(state.score,state.registryDoc,noteToMidi);state.selectedObjectId=obj.id;renderAll();status(`Moved ${obj.id} to beat ${(obj.tick/Q).toFixed(2)}.`)}catch(error){status(`Move rejected: ${error.message}`);renderAll()}};element.addEventListener("pointermove",move);element.addEventListener("pointerup",up,{once:true})})}
+function uniqueId(base){const used=new Set();for(const t of state.score.tracks){used.add(t.id);for(const s of t.sections){used.add(s.id);for(const o of s.objects)used.add(o.id)}}let id=base,n=2;while(used.has(id))id=`${base}-${n++}`;return id}
+function nextTick(section){if(!section.objects.length)return section.start_tick;const end=Math.max(...section.objects.map(o=>o.tick+o.duration_ticks));const snapped=Math.ceil(end/(Q/4))*(Q/4);return snapped+Q<=section.end_tick?snapped:section.start_tick}
+function addObject(source,gesture){const section=currentSection();if(!section||section.source!==source.id)return status(`Assign the selected section to ${sourceLabel(source.id)} first.`);const tick=nextTick(section),duration=Math.min(Q,section.end_tick-tick);if(duration<1)return status("No room remains in this section.");const pitched=source.pitch_policy!=="forbidden";const obj={id:uniqueId(`${source.id.replace(/[^a-z0-9]+/gi,"-")}-${gesture}`),type:pitched?"note":"event",gesture,tick,duration_ticks:duration,dynamics:.75,articulation:"normal"};if(pitched)obj.pitch={note:"C4"};section.objects.push(obj);state.selectedObjectId=obj.id;renderAll();status(`Added ${sourceLabel(source.id)} ${actionLabel(gesture)}.`)}
+function addChord(){const track=currentTrack(),section=currentSection();if(!track||!section?.source)return status("Assign this section a sound identity first.");const source=sourceDoc(section.source);if(source.pitch_policy==="forbidden")return status(`${sourceLabel(section.source)} is intentionally unpitched, so it cannot form a chord.`);const root=$("chord-root").value.trim(),quality=$("chord-quality").value,inversion=Number($("chord-inversion").value),voicing=$("chord-voicing").value;if(noteToMidi(root)===null)return status(`Invalid chord root: ${root}`);const tick=nextTick(section),duration=Math.min(Q,section.end_tick-tick);const chord={id:uniqueId(`${section.source.replace(/[^a-z0-9]+/gi,"-")}-${root.toLowerCase()}-${quality}`),type:"chord",gesture:source.gestures[0],tick,duration_ticks:duration,root,quality,inversion,voicing,dynamics:.75,articulation:"normal"};try{section.objects.push(chord);validateScoreV2(state.score,state.registryDoc,noteToMidi);state.selectedObjectId=chord.id;renderAll();status(`Added ${root} ${words(quality)} ${sourceLabel(section.source)} chord. ${expandChordPitches(chord,noteToMidi).join(" · ")}`)}catch(error){section.objects.pop();status(`Chord rejected: ${error.message}`)}}
+function addTrack(){const id=uniqueId(`track-${state.score.tracks.length+1}`),sectionId=uniqueId(`${id}-section-1`);state.score.tracks.push({id,name:`Track ${state.score.tracks.length+1}`,context:{},sections:[{id:sectionId,start_tick:0,end_tick:state.score.length_ticks,source:null,context:{},objects:[]}]});state.selectedTrackId=id;state.selectedSectionId=sectionId;state.selectedObjectId=null;renderAll();status("New track created. Its section is intentionally unassigned until you choose a sound identity.")}
+function eventFromLocation(loc){const {section,obj}=loc;const event={id:obj.id,source:section.source,gesture:obj.gesture,dynamics:obj.dynamics??.75,articulation:obj.articulation??"normal"};if(obj.type==="chord")event.pitch={note:obj.root};else if(obj.pitch)event.pitch=clone(obj.pitch);if(obj.pitch_curve)event.pitch_curve=clone(obj.pitch_curve);return event}
+function renderInspector(){const loc=locateObject();$("empty-inspector").hidden=Boolean(loc);$("inspector").hidden=!loc;if(!loc)return;const {track,section,obj}=loc,source=sourceDoc(section.source),event=eventFromLocation(loc);$("event-type").value=words(obj.type);$("event-id").value=obj.id;$("event-source").value=sourceLabel(section.source);const gestures=source.gestures.map(g=>new Option(actionLabel(g),g));$("event-gesture").replaceChildren(...gestures);$("event-gesture").value=obj.gesture;$("event-onset").value=(obj.tick/Q).toFixed(2);$("event-duration").value=(obj.duration_ticks/Q).toFixed(2);$("event-dynamics").value=obj.dynamics??.75;$("pitch-row").hidden=source.pitch_policy==="forbidden";$("event-pitch").value=obj.type==="chord"?obj.root:(obj.pitch?.note||"");$("explode-chord").hidden=obj.type!=="chord";if(obj.type==="chord"){$("chord-root").value=obj.root;$("chord-quality").value=obj.quality;$("chord-inversion").value=obj.inversion??0;$("chord-voicing").value=obj.voicing??"close"}const realization=effectiveRealization(event),local=localSampleFor(event);$("event-realization").textContent=realization.kind==="sample"?(realization.origin==="local"?`Local sample · ${realization.name}`:`${state.soundPackDoc.name} · ${realization.name}`):(realization.missing?"Reference synth · sample missing":"Reference synth");$("event-realization-detail").textContent=realization.credit||(realization.missing?`Missing ${realization.missing}; safe fallback.`:"Semantic playback realization.");$("sample-loop").checked=Boolean(local?.loop);$("sample-root").value=local?.root_note||"";$("sample-loop").disabled=!local;$("sample-root").disabled=!local;$("clear-sample").disabled=!local}
+function commitInspector(){const loc=locateObject();if(!loc)return;const before=clone(state.score),{section,obj}=loc,source=sourceDoc(section.source);try{obj.gesture=$("event-gesture").value;obj.tick=Math.round(Number($("event-onset").value)*Q);obj.duration_ticks=Math.max(1,Math.round(Number($("event-duration").value)*Q));obj.dynamics=Math.max(0,Math.min(1,Number($("event-dynamics").value)));if(source.pitch_policy!=="forbidden"){const note=$("event-pitch").value.trim();if(noteToMidi(note)===null)throw new Error(`invalid pitch: ${note}`);if(obj.type==="chord")obj.root=note;else{obj.pitch={note};delete obj.pitch_curve}}validateScoreV2(state.score,state.registryDoc,noteToMidi);renderAll();status(`Updated ${obj.id}.`)}catch(error){state.score=before;renderAll();status(`Notation change rejected: ${error.message}`)}}
+function commitChordControls(){const loc=locateObject();if(!loc||loc.obj.type!=="chord")return;const before=clone(state.score);try{loc.obj.root=$("chord-root").value.trim();loc.obj.quality=$("chord-quality").value;loc.obj.inversion=Number($("chord-inversion").value);loc.obj.voicing=$("chord-voicing").value;validateScoreV2(state.score,state.registryDoc,noteToMidi);renderAll();status(`Chord updated: ${loc.obj.root} ${words(loc.obj.quality)} · ${expandChordPitches(loc.obj,noteToMidi).join(" · ")}`)}catch(error){state.score=before;renderAll();status(`Chord change rejected: ${error.message}`)}}
+function doExplodeChord(){const loc=locateObject();if(!loc||loc.obj.type!=="chord")return;try{const chordId=loc.obj.id;state.score=explodeChord(state.score,chordId,state.registryDoc,noteToMidi);state.selectedObjectId=`${chordId}-v1`;renderAll();status(`Exploded ${chordId} into independent notes.`)}catch(error){status(`Could not explode chord: ${error.message}`)}}
+function deleteSelected(){const loc=locateObject();if(!loc)return;loc.section.objects=loc.section.objects.filter(o=>o.id!==loc.obj.id);state.selectedObjectId=null;renderAll();status(`Deleted ${loc.obj.id}.`)}
+function audioContext(){if(!state.audio)state.audio=new(window.AudioContext||window.webkitAudioContext)();return state.audio}
+function pitchMidi(pitch,a4){if(!pitch)return null;if(pitch.note)return noteToMidi(pitch.note);if(typeof pitch.hz==="number")return 69+12*Math.log2(pitch.hz/a4);return null}
+function midiHz(midi,a4){return a4*2**((midi-69)/12)}
+async function decodedSample(file){if(!state.sampleBuffers.has(file)){const ctx=audioContext();state.sampleBuffers.set(file,file.arrayBuffer().then(data=>ctx.decodeAudioData(data.slice(0))))}return state.sampleBuffers.get(file)}
+async function prepareRealization(event){const r=effectiveRealization(event);if(r.kind!=="sample")return r;try{return{...r,buffer:await decodedSample(r.file)}}catch(error){return{kind:"reference",origin:"decode-fallback",name:"Reference synth",failure:error.message}}}
+function sampleRateFor(event,rootNote,a4,midiOverride=null){if(!rootNote)return 1;const root=noteToMidi(rootNote),midi=midiOverride??pitchMidi(event.pitch,a4);return root===null||midi===null?1:2**((midi-root)/12)}
+function previewSample(event,row,realization,start){const ctx=audioContext(),source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=realization.buffer;source.loop=Boolean(realization.loop);gain.gain.setValueAtTime((realization.gain??1)*(event.dynamics??.75),start);source.playbackRate.setValueAtTime(sampleRateFor(event,realization.root_note,row.a4_hz),start);for(const point of event.pitch_curve||[]){const midi=pitchMidi(point.pitch,row.a4_hz);source.playbackRate.exponentialRampToValueAtTime(Math.max(.01,sampleRateFor(event,realization.root_note,row.a4_hz,midi)),start+point.at*row.duration_seconds)}source.connect(gain);gain.connect(ctx.destination);source.start(start);source.stop(start+row.duration_seconds)}
+function previewReference(event,row,start){const ctx=audioContext(),profile=profileFor(event);if(!profile)return;const duration=row.duration_seconds,gain=ctx.createGain(),level=(profile.gain??.7)*(event.dynamics??.75);gain.gain.setValueAtTime(0,start);gain.gain.linearRampToValueAtTime(level,start+Math.min(profile.attack??.01,duration/2));gain.gain.setValueAtTime(level,start+duration);gain.gain.linearRampToValueAtTime(0,start+duration+(profile.release??.05));gain.connect(ctx.destination);if(profile.mode==="oscillator"){const osc=ctx.createOscillator();osc.type=profile.wave==="saw"?"sawtooth":(["sine","square","triangle","sawtooth"].includes(profile.wave)?profile.wave:"sine");const midi=pitchMidi(event.pitch,row.a4_hz);osc.frequency.setValueAtTime(midi===null?(profile.base_hz??row.a4_hz):midiHz(midi,row.a4_hz),start);for(const point of event.pitch_curve||[]){const m=pitchMidi(point.pitch,row.a4_hz);osc.frequency.linearRampToValueAtTime(midiHz(m,row.a4_hz),start+point.at*duration)}osc.connect(gain);osc.start(start);osc.stop(start+duration+(profile.release??.05));return}const frames=Math.max(1,Math.floor(ctx.sampleRate*(profile.mode==="impulse"?Math.min(.18,duration):duration))),buffer=ctx.createBuffer(1,frames,ctx.sampleRate),data=buffer.getChannelData(0);for(let i=0;i<frames;i++){const noise=Math.random()*2-1;data[i]=profile.mode==="impulse"?noise*Math.exp(-18*i/ctx.sampleRate):noise}const src=ctx.createBufferSource();src.buffer=buffer;src.connect(gain);src.start(start)}
+async function previewRow(row,start,prepared=null){const event=row.event,r=prepared||await prepareRealization(event);if(r.kind==="sample")previewSample(event,row,r,start);else previewReference(event,row,start);return r}
+async function playScore(){const rows=documentRows(state.score,state.registryDoc,noteToMidi),prepared=await Promise.all(rows.map(r=>prepareRealization(r.event))),ctx=audioContext(),base=ctx.currentTime+.08;rows.forEach((row,i)=>previewRow(row,base+row.onset_seconds,prepared[i]));const samples=prepared.filter(r=>r.kind==="sample").length;status(`Playing ${rows.length} realized sounds across ${state.score.tracks.length} tracks: ${samples} sample-backed, ${rows.length-samples} reference synth.`)}
+async function previewSelected(){const loc=locateObject();if(!loc)return;const rows=documentRows(state.score,state.registryDoc,noteToMidi).filter(r=>r.object_id===loc.obj.id),ctx=audioContext(),base=ctx.currentTime+.03;const first=Math.min(...rows.map(r=>r.onset_seconds));for(const row of rows)await previewRow(row,base+(row.onset_seconds-first));status(`Previewing ${loc.obj.type==="chord"?`${rows.length}-voice chord`:loc.obj.id}.`)}
+async function loadSoundPackFolder(fileList){const files=[...fileList];let manifest=null,parsed=null;for(const file of files.filter(f=>f.name.toLowerCase().endsWith(".json"))){try{const candidate=JSON.parse(await file.text());if(candidate?.format==="esn-sound-pack/1"){manifest=file;parsed=candidate;break}}catch(_){}}if(!manifest)throw new Error("No esn-sound-pack/1 manifest found.");state.soundPackDoc=validatePack(parsed,state.registryDoc,noteToMidi);state.soundPackManifestPath=(manifest.webkitRelativePath||manifest.name).replaceAll("\\","/");state.soundPackFiles=new Map(files.map(f=>[(f.webkitRelativePath||f.name).replaceAll("\\","/"),f]));renderAll();const a=packAvailability();status(`Loaded ${state.soundPackDoc.name}: ${a.bindings-a.missing}/${a.bindings} samples available.`)}
+function useReferencePack(){state.soundPackDoc=clone(state.referenceSoundPackDoc);state.soundPackManifestPath="soundpacks/reference.json";state.soundPackFiles=new Map();renderAll();status("Using Reference Synth. Local sample overrides still take priority.")}
+function setLocalSample(file){const loc=locateObject();if(!loc)return;const event=eventFromLocation(loc);state.localSamples.set(realizationKey(event),{file,loop:false,root_note:null});renderInspector();status(`Using ${file.name} for ${sourceLabel(event.source)} ${actionLabel(event.gesture)}.`)}
+function commitLocalSample(){const loc=locateObject();if(!loc)return;const event=eventFromLocation(loc),local=localSampleFor(event);if(!local)return;const root=$("sample-root").value.trim();if(root&&noteToMidi(root)===null){$("sample-root").value=local.root_note||"";return status(`Invalid sample root pitch: ${root}`)}local.root_note=root||null;local.loop=$("sample-loop").checked;renderInspector();status("Local realization updated.")}
+function canonical(value){if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==="object")return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])]));return value}
+function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
+function exportScore(){validateScoreV2(state.score,state.registryDoc,noteToMidi);downloadBlob(new Blob([JSON.stringify(canonical(state.score),null,2)+"\n"],{type:"application/json"}),"sound-score.esn.json");status("Saved editable ESN/2 score with tracks, sections, chords and musical context.")}
+function browserInterchangeScore(){const tempo=state.score.defaults.tempo_bpm,beatSeconds=60/tempo,rows=documentRows(state.score,state.registryDoc,noteToMidi);return{format:"esn/1",title:state.score.title,tempo_bpm:tempo,events:rows.map(row=>({...clone(row.event),onset:row.onset_seconds/beatSeconds,duration:row.duration_seconds/beatSeconds}))}}
+function exportCues(){const flat=browserInterchangeScore(),text=cueCsv(flat,state.interchangeDoc,noteToMidi);downloadBlob(new Blob([text],{type:"text/csv;charset=utf-8"}),"sound-score-cues.csv");status(`Cue sheet exported for ${flat.events.length} realized events. Track-local musical context is flattened loss-aware into absolute timing.`)}
+function exportMidi(){const flat=browserInterchangeScore(),{bytes,report}=midiBytes(flat,state.interchangeDoc,noteToMidi);downloadBlob(new Blob([bytes],{type:"audio/midi"}),"sound-score.mid");status(`MIDI exported: ${report.midi_notes} playable notes, ${report.cue_only} cue-only; ESN/2 structure remains authoritative in the project.`)}
+function newScene(){const defaults=factoryDefaults(),id="track-1",section="track-1-section-1";applyScore({format:"esn/2",title:"Untitled sound score",length_ticks:16*Q,defaults,tracks:[{id,name:"Track 1",context:{},sections:[{id:section,start_tick:0,end_tick:16*Q,source:null,context:{},objects:[]}]}]},"New ESN/2 score ready. Choose a section sound identity, then compose.")}
+async function resetExample(){const score=await fetch("../examples/cat-counterpoint.esn.json").then(r=>r.json());applyScore(score,"Cat Counterpoint restored. 😹")}
+async function openProject(file){try{const parsed=JSON.parse(await file.text());applyScore(parsed,`Opened ${file.name}${parsed.format==="esn/1"?" and migrated it to ESN/2":""}.`)}catch(error){status(`Could not open project: ${error.message}`)}}
+function renderVisualMode(){$("color-mode").value=state.colorMode;$("color-legend").textContent=state.colorMode==="pitch_class"?"colors: note names":`colors: scale steps relative to ${state.visualDoc.scale.tonic}`}
+function renderAll(){if(!state.score)return;renderScoreSettings();renderTrackSettings();renderSectionSettings();renderPackSettings();renderVisualMode();renderPalette();renderRuler();renderTimeline();renderInspector()}
+function wireEvents(){
+  for(const id of ["scene-title","scene-tempo","scene-tuning","scene-meter-num","scene-meter-den","scene-key","scene-scale"])$(id).addEventListener("change",commitScoreSettings);
+  $("track-select").addEventListener("change",e=>{state.selectedTrackId=e.target.value;state.selectedSectionId=currentTrack()?.sections[0]?.id||null;state.selectedObjectId=null;renderAll()});
+  for(const id of ["track-name","track-tempo","track-tuning","track-meter-num","track-meter-den","track-key","track-scale"])$(id).addEventListener("change",commitTrackSettings);
+  $("section-select").addEventListener("change",e=>{state.selectedSectionId=e.target.value;state.selectedObjectId=null;renderAll()});
+  $("section-source").addEventListener("change",changeSectionSource);$("split-section").addEventListener("click",doSplitSection);$("add-track").addEventListener("click",addTrack);$("add-chord").addEventListener("click",addChord);
+  for(const id of ["section-tempo","section-tuning","section-meter-num","section-meter-den","section-key","section-scale"])$(id).addEventListener("change",commitSectionContext);
+  for(const id of ["event-gesture","event-onset","event-duration","event-pitch","event-dynamics"])$(id).addEventListener("change",commitInspector);
+  for(const id of ["chord-root","chord-quality","chord-inversion","chord-voicing"])$(id).addEventListener("change",commitChordControls);
+  $("explode-chord").addEventListener("click",doExplodeChord);$("delete-event").addEventListener("click",deleteSelected);$("play-event").addEventListener("click",previewSelected);
+  $("color-mode").addEventListener("change",e=>{state.colorMode=e.target.value;renderAll();status(`Colors now show ${state.colorMode==="pitch_class"?"note names":"scale steps"}.`)});
+  $("new-scene").addEventListener("click",newScene);$("reload").addEventListener("click",resetExample);$("play-score").addEventListener("click",playScore);$("export").addEventListener("click",exportScore);$("export-cues").addEventListener("click",exportCues);$("export-midi").addEventListener("click",exportMidi);
+  $("open-project").addEventListener("click",()=>$("project-file").click());$("project-file").addEventListener("change",async e=>{const file=e.target.files?.[0];if(file)await openProject(file);e.target.value=""});
+  $("load-pack").addEventListener("click",()=>$("pack-folder").click());$("pack-folder").addEventListener("change",async e=>{try{if(e.target.files?.length)await loadSoundPackFolder(e.target.files)}catch(error){status(`Could not load sound pack: ${error.message}`)}e.target.value=""});$("use-reference-pack").addEventListener("click",useReferencePack);
+  $("choose-sample").addEventListener("click",()=>$("sample-file").click());$("sample-file").addEventListener("change",e=>{const file=e.target.files?.[0];if(file)setLocalSample(file);e.target.value=""});$("sample-loop").addEventListener("change",commitLocalSample);$("sample-root").addEventListener("change",commitLocalSample);
+  $("clear-sample").addEventListener("click",()=>{const loc=locateObject();if(!loc)return;const event=eventFromLocation(loc);state.localSamples.delete(realizationKey(event));renderInspector();status(`Cleared local sample for ${sourceLabel(event.source)} ${actionLabel(event.gesture)}.`)});
 }
-
-function actionLabel(gesture) {
-  return titleWords(gesture);
-}
-
-function realizationKey(event) {
-  return `${event.source}/${event.gesture}`;
-}
-
-function localSampleFor(event) {
-  return state.localSamples.get(realizationKey(event)) || null;
-}
-
-function packBindingFor(event) {
-  return state.soundPackDoc ? resolveBinding(state.soundPackDoc, event) : null;
-}
-
-function effectiveRealization(event) {
-  const local = localSampleFor(event);
-  if (local) return {kind: "sample", origin: "local", name: local.file.name, file: local.file, gain: 1, loop: local.loop, root_note: local.root_note || null};
-  const binding = packBindingFor(event);
-  if (!binding) return {kind: "reference", origin: "reference", name: "Reference synth"};
-  const key = fileKeyFor(state.soundPackManifestPath, binding.asset);
-  const file = state.soundPackFiles.get(key);
-  if (!file) return {kind: "reference", origin: "missing", name: "Reference synth", missing: binding.asset};
-  return {kind: "sample", origin: "pack", name: binding.asset, file, gain: binding.gain ?? 1, loop: Boolean(binding.loop), root_note: binding.root_note || null, credit: binding.credit || ""};
-}
-
-function packAvailability() {
-  if (!state.soundPackDoc) return {bindings: 0, missing: 0};
-  let missing = 0;
-  for (const binding of state.soundPackDoc.bindings) {
-    const key = fileKeyFor(state.soundPackManifestPath, binding.asset);
-    if (!state.soundPackFiles.has(key)) missing++;
-  }
-  return {bindings: state.soundPackDoc.bindings.length, missing};
-}
-
-function renderPackSettings() {
-  if (!state.soundPackDoc) return;
-  const availability = packAvailability();
-  $("pack-name").textContent = state.soundPackDoc.name;
-  const detail = describePack(state.soundPackDoc);
-  $("pack-meta").textContent = availability.bindings
-    ? `${detail} · ${availability.bindings - availability.missing}/${availability.bindings} samples available; missing samples fall back.`
-    : `${detail} · ${state.soundPackDoc.provenance.notes || "Reference playback."}`;
-}
-
-function useReferenceSoundPack() {
-  state.soundPackDoc = structuredClone(state.referenceSoundPackDoc);
-  state.soundPackManifestPath = "soundpacks/reference.json";
-  state.soundPackFiles = new Map();
-  renderAll();
-  status("Using the Reference Synth pack. Local sample overrides still take priority.");
-}
-
-async function loadSoundPackFolder(fileList) {
-  const files = [...fileList];
-  let manifestFile = null;
-  let parsed = null;
-  for (const file of files.filter(candidate => candidate.name.toLowerCase().endsWith(".json"))) {
-    try {
-      const candidate = JSON.parse(await file.text());
-      if (candidate?.format === "esn-sound-pack/1") {
-        manifestFile = file;
-        parsed = candidate;
-        break;
-      }
-    } catch (_) {
-      // Ignore unrelated JSON files while looking for a pack manifest.
-    }
-  }
-  if (!manifestFile) throw new Error("No esn-sound-pack/1 manifest was found in that folder.");
-  const doc = validatePack(parsed, state.registryDoc, noteToMidi);
-  const manifestPath = (manifestFile.webkitRelativePath || manifestFile.name).replaceAll("\\", "/");
-  const fileMap = new Map(files.map(file => [(file.webkitRelativePath || file.name).replaceAll("\\", "/"), file]));
-  state.soundPackDoc = doc;
-  state.soundPackManifestPath = manifestPath;
-  state.soundPackFiles = fileMap;
-  renderAll();
-  const availability = packAvailability();
-  status(`Loaded ${doc.name}: ${availability.bindings - availability.missing}/${availability.bindings} sample bindings available; ${availability.missing} use reference fallback.`);
-}
-
-const SCORE_FIELDS = new Set(["format", "title", "tempo_bpm", "metadata", "events"]);
-const EVENT_FIELDS = new Set(["id", "source", "gesture", "onset", "duration", "pitch", "dynamics", "articulation", "pitch_curve"]);
-const ARTICULATIONS = new Set(["normal", "staccato", "tenuto", "accent", "legato"]);
-
-function finiteNumber(value, label, minimum = null) {
-  if (typeof value !== "number" || !Number.isFinite(value) || (minimum !== null && value < minimum)) {
-    throw new Error(`${label} is not a valid number.`);
-  }
-  return value;
-}
-
-function validatePitch(pitch, label) {
-  if (!pitch || typeof pitch !== "object" || Array.isArray(pitch)) throw new Error(`${label} must be a pitch object.`);
-  const keys = Object.keys(pitch);
-  if (keys.length !== 1 || !["note", "hz"].includes(keys[0])) throw new Error(`${label} must contain exactly note or hz.`);
-  if (keys[0] === "note") {
-    if (typeof pitch.note !== "string" || noteToMidi(pitch.note) === null) throw new Error(`${label} has an invalid note.`);
-  } else {
-    finiteNumber(pitch.hz, `${label}.hz`, Number.MIN_VALUE);
-  }
-}
-
-function validateProject(score) {
-  if (!score || typeof score !== "object" || Array.isArray(score)) throw new Error("Project root must be an object.");
-  const unknownScore = Object.keys(score).filter(key => !SCORE_FIELDS.has(key));
-  if (unknownScore.length) throw new Error(`Project contains unknown fields: ${unknownScore.join(", ")}.`);
-  if (score.format !== "esn/1") throw new Error("Project format must be esn/1.");
-  if (typeof score.title !== "string" || !score.title.trim()) throw new Error("Project title cannot be empty.");
-  finiteNumber(score.tempo_bpm ?? 120, "tempo_bpm", 1);
-  if ("metadata" in score && (!score.metadata || typeof score.metadata !== "object" || Array.isArray(score.metadata))) throw new Error("Project metadata must be an object.");
-  if (!Array.isArray(score.events)) throw new Error("Project events must be an array.");
-
-  const ids = new Set();
-  score.events.forEach((event, index) => {
-    const where = `Event ${index + 1}`;
-    if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error(`${where} must be an object.`);
-    const unknown = Object.keys(event).filter(key => !EVENT_FIELDS.has(key));
-    if (unknown.length) throw new Error(`${where} contains unknown fields: ${unknown.join(", ")}.`);
-    if (typeof event.id !== "string" || !event.id) throw new Error(`${where} needs an ID.`);
-    if (ids.has(event.id)) throw new Error(`Duplicate event ID: ${event.id}.`);
-    ids.add(event.id);
-    const source = state.sources.get(event.source);
-    if (!source) throw new Error(`${where} uses an unknown sound source: ${event.source}.`);
-    if (!source.gestures.includes(event.gesture)) throw new Error(`${where} uses an invalid action for ${sourceLabel(event.source)}.`);
-    finiteNumber(event.onset, `${where} onset`, 0);
-    finiteNumber(event.duration, `${where} duration`, 0.000001);
-    const dynamics = finiteNumber(event.dynamics ?? 0.75, `${where} loudness`, 0);
-    if (dynamics > 1) throw new Error(`${where} loudness must be between 0 and 1.`);
-    if (!ARTICULATIONS.has(event.articulation ?? "normal")) throw new Error(`${where} has an unknown articulation.`);
-    if (source.pitch_policy === "required" && !event.pitch) throw new Error(`${where} requires a pitch.`);
-    if (source.pitch_policy === "forbidden" && event.pitch) throw new Error(`${where} cannot have a pitch.`);
-    if (event.pitch) validatePitch(event.pitch, `${where} pitch`);
-    if (event.pitch_curve !== undefined) {
-      if (!event.pitch) throw new Error(`${where} pitch curve needs a starting pitch.`);
-      if (!Array.isArray(event.pitch_curve) || !event.pitch_curve.length) throw new Error(`${where} pitch curve must contain points.`);
-      let previous = -1;
-      event.pitch_curve.forEach((point, pointIndex) => {
-        if (!point || typeof point !== "object" || Array.isArray(point) || Object.keys(point).sort().join(",") !== "at,pitch") throw new Error(`${where} pitch curve point ${pointIndex + 1} is invalid.`);
-        finiteNumber(point.at, `${where} pitch curve position`, 0);
-        if (point.at > 1 || point.at <= previous) throw new Error(`${where} pitch curve positions must increase within 0..1.`);
-        previous = point.at;
-        validatePitch(point.pitch, `${where} pitch curve point ${pointIndex + 1}`);
-      });
-    }
-  });
-  return score;
-}
-
-function applyScore(score, message) {
-  validateProject(score);
-  state.score = structuredClone(score);
-  if (!("tempo_bpm" in state.score)) state.score.tempo_bpm = 120;
-  state.selectedId = null;
-  renderAll();
-  status(message);
-}
-
-function newScene() {
-  applyScore({format: "esn/1", title: "Untitled sound scene", tempo_bpm: 120, events: []}, "New empty sound scene ready.");
-}
-
-async function resetExample() {
-  const score = await fetch("../examples/first-score.esn.json").then(response => response.json());
-  applyScore(score, `Example restored: ${score.events.length} sounds at ${score.tempo_bpm} BPM.`);
-}
-
-async function openProjectFile(file) {
-  try {
-    const parsed = JSON.parse(await file.text());
-    applyScore(parsed, `Opened ${file.name}: ${parsed.events.length} sounds at ${parsed.tempo_bpm ?? 120} BPM.`);
-  } catch (error) {
-    status(`Could not open project: ${error.message}`);
-  }
-}
-
-function renderSceneSettings() {
-  if (!state.score) return;
-  $("scene-title").value = state.score.title;
-  $("scene-tempo").value = state.score.tempo_bpm ?? 120;
-}
-
-function commitSceneSettings() {
-  const title = $("scene-title").value.trim();
-  const tempo = Number($("scene-tempo").value);
-  if (!title) {
-    $("scene-title").value = state.score.title;
-    return status("Scene title cannot be empty.");
-  }
-  if (!Number.isFinite(tempo) || tempo < 1) {
-    $("scene-tempo").value = state.score.tempo_bpm ?? 120;
-    return status("Tempo must be at least 1 BPM.");
-  }
-  state.score.title = title;
-  state.score.tempo_bpm = tempo;
-  status(`Scene updated: ${title} at ${tempo} BPM.`);
-}
-
-function profileFor(event) {
-  return state.profiles.get(`${event.source}/${event.gesture}`)
-      || state.profiles.get(`${event.source}/*`);
-}
-
-function pitchMidi(event) {
-  if (!event.pitch) return null;
-  if (typeof event.pitch.note === "string") return noteToMidi(event.pitch.note);
-  if (typeof event.pitch.hz === "number") return 69 + 12 * Math.log2(event.pitch.hz / 440);
-  return null;
-}
-
-function eventColor(event) {
-  const midi = pitchMidi(event);
-  if (midi === null) return state.visualDoc.palettes.unpitched;
-  return colorCueForMidi(state.visualDoc, midi, state.colorMode).color;
-}
-
-function sourceGlyph(sourceId, color, size = 22) {
-  return glyphSvg(state.visualDoc, sourceId, color, size);
-}
-
-function maxEnd() {
-  return Math.max(4, ...state.score.events.map(e => Number(e.onset) + Number(e.duration)));
-}
-
-function eventTop(event) {
-  const midi = pitchMidi(event);
-  if (midi !== null) return PITCH_TOP + (TOP_MIDI - midi) * SEMITONE_PX;
-  const unpitched = [...new Set(state.score.events.filter(e => !e.pitch).map(e => e.source))].sort();
-  return UNPITCHED_TOP + unpitched.indexOf(event.source) * 46;
-}
-
-function renderAll() {
-  renderSceneSettings();
-  renderPackSettings();
-  renderVisualMode();
-  renderPalette();
-  renderRuler();
-  renderTimeline();
-  renderInspector();
-}
-
-function renderVisualMode() {
-  $("color-mode").value = state.colorMode;
-  const mode = state.colorMode === "pitch_class"
-    ? "same note name = same color"
-    : `scale steps relative to ${state.visualDoc.scale.tonic}`;
-  $("color-legend").textContent = `colors: ${mode}`;
-}
-
-function renderPalette() {
-  const root = $("palette");
-  root.replaceChildren();
-  for (const source of state.registryDoc.sources) {
-    const group = document.createElement("div");
-    group.className = "source-group";
-    group.innerHTML = `<div class="source-name" title="${source.id}">${sourceGlyph(source.id, state.visualDoc.palettes.unpitched, 22)}<span>${sourceLabel(source.id)}</span></div>`;
-    const gestures = document.createElement("div");
-    gestures.className = "gesture-list";
-    for (const gesture of source.gestures) {
-      const button = document.createElement("button");
-      button.className = "gesture-button";
-      button.textContent = actionLabel(gesture);
-      button.addEventListener("click", () => addEvent(source, gesture));
-      gestures.append(button);
-    }
-    group.append(gestures);
-    root.append(group);
-  }
-}
-
-function renderRuler() {
-  const ruler = $("ruler");
-  ruler.replaceChildren();
-  for (let beat = 0; beat <= Math.ceil(maxEnd()) + 1; beat++) {
-    const mark = document.createElement("div");
-    mark.className = "ruler-mark";
-    mark.style.left = `${beat * PX_PER_BEAT}px`;
-    mark.textContent = beat;
-    ruler.append(mark);
-  }
-}
-
-function renderTimeline() {
-  const root = $("timeline");
-  root.replaceChildren();
-  root.style.width = `${Math.max(1000, (maxEnd() + 2) * PX_PER_BEAT)}px`;
-
-  for (let midi = 84; midi >= 48; midi -= 12) {
-    const label = document.createElement("span");
-    label.className = "pitch-label";
-    label.style.top = `${PITCH_TOP + (TOP_MIDI - midi) * SEMITONE_PX}px`;
-    label.textContent = midiToNote(midi);
-    root.append(label);
-  }
-
-  const divider = document.createElement("div");
-  divider.className = "unpitched-divider";
-  divider.style.top = `${UNPITCHED_TOP - 12}px`;
-  root.append(divider);
-
-  const lanes = [...new Set(state.score.events.filter(e => !e.pitch).map(e => e.source))].sort();
-  lanes.forEach((source, index) => {
-    const label = document.createElement("span");
-    label.className = "lane-label";
-    label.style.top = `${UNPITCHED_TOP + index * 46 + 8}px`;
-    label.textContent = sourceLabel(source);
-    root.append(label);
-  });
-
-  for (const event of state.score.events) {
-    const source = sourceFor(event);
-    const chip = document.createElement("div");
-    chip.className = `event${event.id === state.selectedId ? " selected" : ""}`;
-    chip.dataset.id = event.id;
-    chip.style.left = `${Number(event.onset) * PX_PER_BEAT}px`;
-    chip.style.top = `${eventTop(event)}px`;
-    chip.style.width = `${Math.max(38, Number(event.duration) * PX_PER_BEAT)}px`;
-    const midi = pitchMidi(event);
-    const color = eventColor(event);
-    const cue = midi === null ? "unpitched" : colorCueForMidi(state.visualDoc, midi, state.colorMode).label;
-    chip.style.color = color;
-    chip.innerHTML = `<span class="glyph">${sourceGlyph(event.source, color, 22)}</span><span class="meta">${actionLabel(event.gesture)}${event.pitch?.note ? ` · ${event.pitch.note}` : ""}</span>`;
-    chip.title = `${sourceLabel(event.source)} · ${actionLabel(event.gesture)} · ${cue}`;
-    chip.addEventListener("click", e => {
-      e.stopPropagation();
-      state.selectedId = event.id;
-      renderAll();
-    });
-    installDrag(chip, event);
-    root.append(chip);
-  }
-
-  root.onclick = click => {
-    if (click.target !== root) return;
-    if (state.ignoreTimelineClick) {
-      state.ignoreTimelineClick = false;
-      return;
-    }
-    state.selectedId = null;
-    renderAll();
-  };
-}
-
-function installDrag(element, event) {
-  element.addEventListener("pointerdown", down => {
-    down.stopPropagation();
-    element.setPointerCapture(down.pointerId);
-    const startX = down.clientX;
-    const startY = down.clientY;
-    const originalOnset = Number(event.onset);
-    const originalMidi = pitchMidi(event);
-    let moved = false;
-
-    const move = current => {
-      const deltaX = current.clientX - startX;
-      const deltaY = current.clientY - startY;
-      if (!moved && Math.abs(deltaX) < 3 && Math.abs(deltaY) < 3) return;
-      moved = true;
-      const beats = Math.round((deltaX / PX_PER_BEAT) * 4) / 4;
-      event.onset = Math.max(0, originalOnset + beats);
-      if (originalMidi !== null) {
-        const semitones = Math.round(-deltaY / SEMITONE_PX);
-        event.pitch = {note: midiToNote(originalMidi + semitones)};
-        delete event.pitch_curve;
-      }
-      element.style.left = `${event.onset * PX_PER_BEAT}px`;
-      element.style.top = `${eventTop(event)}px`;
-    };
-    const up = () => {
-      element.removeEventListener("pointermove", move);
-      if (!moved) return;
-      state.selectedId = event.id;
-      state.ignoreTimelineClick = true;
-      setTimeout(() => { state.ignoreTimelineClick = false; }, 0);
-      renderAll();
-    };
-    element.addEventListener("pointermove", move);
-    element.addEventListener("pointerup", up, {once: true});
-  });
-}
-
-function addEvent(source, gesture) {
-  const idBase = `${source.id.replace(/[^a-z0-9]+/gi, "-")}-${gesture}`;
-  let counter = 1;
-  while (state.score.events.some(e => e.id === `${idBase}-${counter}`)) counter++;
-  const event = {
-    id: `${idBase}-${counter}`,
-    source: source.id,
-    gesture,
-    onset: Math.ceil(maxEnd()),
-    duration: 1,
-    dynamics: 0.75,
-  };
-  if (source.pitch_policy === "required") event.pitch = {note: "C4"};
-  state.score.events.push(event);
-  state.selectedId = event.id;
-  renderAll();
-  status(`Added ${sourceLabel(source.id)}: ${actionLabel(gesture)}.`);
-}
-
-function selectedEvent() {
-  return state.score.events.find(event => event.id === state.selectedId) || null;
-}
-
-function renderInspector() {
-  const event = selectedEvent();
-  $("empty-inspector").hidden = Boolean(event);
-  $("inspector").hidden = !event;
-  if (!event) return;
-  const source = sourceFor(event);
-  $("event-id").value = event.id;
-  $("event-source").value = sourceLabel(event.source);
-  $("event-onset").value = event.onset;
-  $("event-duration").value = event.duration;
-  $("event-dynamics").value = event.dynamics ?? 0.75;
-  $("pitch-row").hidden = source.pitch_policy === "forbidden";
-  $("event-pitch").value = event.pitch?.note || "";
-  const gestureSelect = $("event-gesture");
-  gestureSelect.replaceChildren(...source.gestures.map(gesture => new Option(actionLabel(gesture), gesture)));
-  gestureSelect.value = event.gesture;
-  const local = localSampleFor(event);
-  const realization = effectiveRealization(event);
-  if (realization.kind === "sample") {
-    $("event-realization").textContent = realization.origin === "local" ? `Local sample · ${realization.name}` : `${state.soundPackDoc.name} · ${realization.name}`;
-    $("event-realization-detail").textContent = realization.credit || (realization.origin === "local" ? "Applies to every matching source/action in this session." : `Pack sample · ${state.soundPackDoc.license.name}`);
-  } else {
-    $("event-realization").textContent = realization.missing ? "Reference synth · sample missing" : "Reference synth";
-    $("event-realization-detail").textContent = realization.missing ? `Could not find ${realization.missing}; playback falls back safely.` : "Uses the built-in sketch sound.";
-  }
-  $("sample-loop").checked = Boolean(local?.loop);
-  $("sample-root").value = local?.root_note || "";
-  $("sample-loop").disabled = !local;
-  $("sample-root").disabled = !local;
-  $("clear-sample").disabled = !local;
-}
-
-function commitInspector() {
-  const event = selectedEvent();
-  if (!event) return;
-  const source = sourceFor(event);
-  event.gesture = $("event-gesture").value;
-  event.onset = Math.max(0, Number($("event-onset").value) || 0);
-  event.duration = Math.max(0.01, Number($("event-duration").value) || 0.01);
-  event.dynamics = Math.max(0, Math.min(1, Number($("event-dynamics").value)));
-  if (source.pitch_policy !== "forbidden") {
-    const note = $("event-pitch").value.trim();
-    if (note) {
-      if (noteToMidi(note) === null) return status(`Invalid pitch: ${note}`);
-      event.pitch = {note};
-    } else if (source.pitch_policy === "required") {
-      event.pitch = {note: "C4"};
-    } else {
-      delete event.pitch;
-    }
-    delete event.pitch_curve;
-  }
-  renderAll();
-}
-
-function setLocalSample(file) {
-  const event = selectedEvent();
-  if (!event) return;
-  state.localSamples.set(realizationKey(event), {file, loop: false, root_note: null});
-  renderInspector();
-  status(`Using ${file.name} for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} in this session.`);
-}
-
-function commitLocalSampleSettings() {
-  const event = selectedEvent();
-  if (!event) return;
-  const local = localSampleFor(event);
-  if (!local) return;
-  const rootNote = $("sample-root").value.trim();
-  if (rootNote && noteToMidi(rootNote) === null) {
-    $("sample-root").value = local.root_note || "";
-    return status(`Invalid sample root pitch: ${rootNote}`);
-  }
-  local.loop = $("sample-loop").checked;
-  local.root_note = rootNote || null;
-  renderInspector();
-  status(`Updated local sample realization for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)}.`);
-}
-
-function audioContext() {
-  if (!state.audio) state.audio = new (window.AudioContext || window.webkitAudioContext)();
-  return state.audio;
-}
-
-function midiHz(midi) {
-  return 440 * 2 ** ((midi - 69) / 12);
-}
-
-function previewReferenceEvent(event, when = null, durationOverride = null) {
-  const ctx = audioContext();
-  const profile = profileFor(event);
-  if (!profile) return status(`No playback profile for ${event.source}/${event.gesture}`);
-  const start = when ?? ctx.currentTime + 0.02;
-  const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
-  const duration = durationOverride ?? Number(event.duration) * beatSeconds;
-  const gainNode = ctx.createGain();
-  gainNode.gain.setValueAtTime(0, start);
-  gainNode.gain.linearRampToValueAtTime((profile.gain ?? 0.7) * (event.dynamics ?? 0.75), start + Math.min(profile.attack ?? .01, duration / 2));
-  gainNode.gain.setValueAtTime((profile.gain ?? 0.7) * (event.dynamics ?? 0.75), start + duration);
-  gainNode.gain.linearRampToValueAtTime(0, start + duration + (profile.release ?? .05));
-  gainNode.connect(ctx.destination);
-
-  if (profile.mode === "oscillator") {
-    const osc = ctx.createOscillator();
-    osc.type = ["sine","square","sawtooth","triangle"].includes(profile.wave) ? profile.wave : (profile.wave === "saw" ? "sawtooth" : "sine");
-    const midi = pitchMidi(event);
-    osc.frequency.setValueAtTime(midi === null ? (profile.base_hz ?? 440) : midiHz(midi), start);
-    for (const point of event.pitch_curve || []) {
-      const pointMidi = point.pitch.note ? noteToMidi(point.pitch.note) : 69 + 12 * Math.log2(point.pitch.hz / 440);
-      osc.frequency.linearRampToValueAtTime(midiHz(pointMidi), start + point.at * duration);
-    }
-    osc.connect(gainNode);
-    osc.start(start);
-    osc.stop(start + duration + (profile.release ?? .05));
-    return;
-  }
-
-  const frames = Math.max(1, Math.floor(ctx.sampleRate * (profile.mode === "impulse" ? Math.min(0.18, duration) : duration)));
-  const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < frames; i++) {
-    const noise = Math.random() * 2 - 1;
-    data[i] = profile.mode === "impulse" ? noise * Math.exp(-18 * i / ctx.sampleRate) : noise;
-  }
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(gainNode);
-  source.start(start);
-}
-
-async function decodedSample(file) {
-  if (!state.sampleBuffers.has(file)) {
-    const ctx = audioContext();
-    const promise = file.arrayBuffer().then(data => ctx.decodeAudioData(data.slice(0)));
-    state.sampleBuffers.set(file, promise);
-  }
-  return state.sampleBuffers.get(file);
-}
-
-function samplePlaybackRate(event, rootNote, midiOverride = null) {
-  if (!rootNote) return 1;
-  const rootMidi = noteToMidi(rootNote);
-  const midi = midiOverride ?? pitchMidi(event);
-  if (rootMidi === null || midi === null) return 1;
-  return 2 ** ((midi - rootMidi) / 12);
-}
-
-async function prepareRealization(event) {
-  const realization = effectiveRealization(event);
-  if (realization.kind !== "sample") return realization;
-  try {
-    return {...realization, buffer: await decodedSample(realization.file)};
-  } catch (error) {
-    return {kind: "reference", origin: "decode-fallback", name: "Reference synth", failure: error.message};
-  }
-}
-
-function previewSampleEvent(event, realization, start, duration) {
-  const ctx = audioContext();
-  const source = ctx.createBufferSource();
-  const gainNode = ctx.createGain();
-  source.buffer = realization.buffer;
-  source.loop = Boolean(realization.loop);
-  gainNode.gain.setValueAtTime((realization.gain ?? 1) * (event.dynamics ?? 0.75), start);
-  source.playbackRate.setValueAtTime(samplePlaybackRate(event, realization.root_note), start);
-  for (const point of event.pitch_curve || []) {
-    const pointMidi = point.pitch.note ? noteToMidi(point.pitch.note) : 69 + 12 * Math.log2(point.pitch.hz / 440);
-    const rate = Math.max(0.01, samplePlaybackRate(event, realization.root_note, pointMidi));
-    source.playbackRate.exponentialRampToValueAtTime(rate, start + point.at * duration);
-  }
-  source.connect(gainNode);
-  gainNode.connect(ctx.destination);
-  source.start(start);
-  source.stop(start + duration);
-}
-
-async function previewEvent(event, when = null, durationOverride = null, prepared = null) {
-  const ctx = audioContext();
-  const start = when ?? ctx.currentTime + 0.02;
-  const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
-  const duration = durationOverride ?? Number(event.duration) * beatSeconds;
-  const realization = prepared || await prepareRealization(event);
-  if (realization.kind === "sample") previewSampleEvent(event, realization, start, duration);
-  else previewReferenceEvent(event, start, duration);
-  return realization;
-}
-
-async function playScore() {
-  const ctx = audioContext();
-  const beatSeconds = 60 / Number(state.score.tempo_bpm || 120);
-  const prepared = await Promise.all(state.score.events.map(prepareRealization));
-  const base = ctx.currentTime + 0.08;
-  state.score.events.forEach((event, index) => previewEvent(event, base + Number(event.onset) * beatSeconds, null, prepared[index]));
-  const sampleCount = prepared.filter(item => item.kind === "sample").length;
-  const fallbackCount = prepared.length - sampleCount;
-  status(`Previewing ${prepared.length} sounds: ${sampleCount} sample-backed, ${fallbackCount} reference synth.`);
-}
-
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
-  }
-  return value;
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportScore() {
-  const text = JSON.stringify(canonical(state.score), null, 2) + "\n";
-  downloadBlob(new Blob([text], {type: "application/json"}), "sound-scene.esn.json");
-  status("Saved editable ESN project.");
-}
-
-function exportCueSheet() {
-  const text = cueCsv(state.score, state.interchangeDoc, noteToMidi);
-  downloadBlob(new Blob([text], {type: "text/csv;charset=utf-8"}), "sound-scene-cues.csv");
-  status(`Cue sheet ready: ${state.score.events.length} sounds with beat positions and timecodes.`);
-}
-
-function exportMidi() {
-  const {bytes, report} = midiBytes(state.score, state.interchangeDoc, noteToMidi);
-  downloadBlob(new Blob([bytes], {type: "audio/midi"}), "sound-scene.mid");
-  status(`MIDI ready: ${report.midi_notes} playable notes, ${report.cue_only} cue-only sounds, all ${report.events_total} preserved as timed ESN cues.`);
-}
-
-function status(message) {
-  $("status").textContent = message;
-}
-
-for (const id of ["event-gesture","event-onset","event-duration","event-pitch","event-dynamics"]) {
-  $(id).addEventListener("change", commitInspector);
-}
-$("color-mode").addEventListener("change", event => {
-  state.colorMode = event.target.value;
-  renderAll();
-  const meaning = state.colorMode === "pitch_class" ? "note names" : `scale steps relative to ${state.visualDoc.scale.tonic}`;
-  status(`Colors now show ${meaning}.`);
-});
-$("load-pack").addEventListener("click", () => $("pack-folder").click());
-$("pack-folder").addEventListener("change", async event => {
-  const files = event.target.files;
-  if (files?.length) {
-    try { await loadSoundPackFolder(files); }
-    catch (error) { status(`Could not load sound pack: ${error.message}`); }
-  }
-  event.target.value = "";
-});
-$("use-reference-pack").addEventListener("click", useReferenceSoundPack);
-$("choose-sample").addEventListener("click", () => $("sample-file").click());
-$("sample-file").addEventListener("change", event => {
-  const file = event.target.files?.[0];
-  if (file) setLocalSample(file);
-  event.target.value = "";
-});
-$("sample-loop").addEventListener("change", commitLocalSampleSettings);
-$("sample-root").addEventListener("change", commitLocalSampleSettings);
-$("clear-sample").addEventListener("click", () => {
-  const event = selectedEvent();
-  if (!event) return;
-  state.localSamples.delete(realizationKey(event));
-  renderInspector();
-  status(`Cleared local sample for ${sourceLabel(event.source)}: ${actionLabel(event.gesture)}.`);
-});
-$("new-scene").addEventListener("click", newScene);
-$("open-project").addEventListener("click", () => $("project-file").click());
-$("project-file").addEventListener("change", async event => {
-  const file = event.target.files?.[0];
-  if (file) await openProjectFile(file);
-  event.target.value = "";
-});
-$("scene-title").addEventListener("change", commitSceneSettings);
-$("scene-tempo").addEventListener("change", commitSceneSettings);
-$("reload").addEventListener("click", () => resetExample());
-$("play-score").addEventListener("click", playScore);
-$("export").addEventListener("click", exportScore);
-$("export-cues").addEventListener("click", exportCueSheet);
-$("export-midi").addEventListener("click", exportMidi);
-$("play-event").addEventListener("click", async () => {
-  const event = selectedEvent();
-  if (!event) return;
-  const realization = await previewEvent(event);
-  const via = realization.kind === "sample" ? realization.name : "Reference synth";
-  status(`Previewing ${sourceLabel(event.source)}: ${actionLabel(event.gesture)} via ${via}.`);
-});
-$("delete-event").addEventListener("click", () => {
-  const event = selectedEvent();
-  if (!event) return;
-  state.score.events = state.score.events.filter(candidate => candidate.id !== event.id);
-  state.selectedId = null;
-  renderAll();
-  status(`Deleted ${event.id}.`);
-});
-
-loadBundled().catch(error => status(`Load failed: ${error.message}. Serve the repository root over HTTP.`));
+loadBundled().then(()=>{setupStaticSelects();wireEvents();renderAll()}).catch(error=>status(`Load failed: ${error.message}. Serve the repository root over HTTP.`));

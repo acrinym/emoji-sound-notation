@@ -1,0 +1,52 @@
+[train]
+name        = "beadtrain_6_score_grammar"
+title       = "Beadtrain 6 - Score grammar and multi-track composition"
+description = """
+Transform ESN from a flat event timeline into a notation-first multi-track score composer with explicit sections, inherited musical context, polyphony, chords, A4=432 tuning, migration, and real-browser product proof.
+"""
+created     = "2026-09-10"
+status      = "in_progress"
+
+[[cars]]
+id             = "score_grammar"
+bead           = "emoji-sound-notation-894.1"
+title          = "Build ESN/2 score grammar core"
+parallel_start = false
+depends_on     = []
+summary        = "Define and validate ESN/2 tracks, sections, context inheritance, chord semantics, 432 Hz defaults, flattening, and deterministic ESN/1 migration."
+
+[[cars]]
+id             = "adapters"
+bead           = "emoji-sound-notation-894.2"
+title          = "Adapt rendering and interchange to ESN/2"
+parallel_start = true
+depends_on     = ["score_grammar"]
+summary        = "Route ESN/2 through score flattening so playback, SVG, cue, MIDI, tuning, and loss reporting preserve existing ESN/1 behavior while accepting structured scores."
+
+[[cars]]
+id             = "browser_domain"
+bead           = "emoji-sound-notation-894.3"
+title          = "Build browser score domain"
+parallel_start = true
+depends_on     = ["score_grammar"]
+summary        = "Mirror ESN/2 validation, migration, section splitting, chord expansion/explosion, context inheritance, and timing behavior in dependency-free browser JavaScript."
+
+[[cars]]
+id             = "composer"
+bead           = "emoji-sound-notation-894.4"
+title          = "Build multi-track notation editor"
+parallel_start = false
+depends_on     = ["adapters", "browser_domain"]
+summary        = "Expose tracks, sections, explicit source assignment, musical context controls, note/event/chord authoring, cat-heavy product proof, and ESN/2 lifecycle in the browser composer."
+
+[[cars]]
+id             = "qualify"
+bead           = "emoji-sound-notation-894.5"
+title          = "Qualify Train 6 end to end"
+parallel_start = false
+depends_on     = ["composer"]
+summary        = "Prove full Python/Node regression safety, deterministic ESN/2 adapters, the 33-assertion Microsoft Edge journey, preserved screenshots, manifest validity, CI, review, and exact-head provenance."
+
+[meta]
+one_liner    = "Compose semantic sounds as real multi-track music without flattening cats, weather, instruments, or context into one timeline."
+couples_with = []

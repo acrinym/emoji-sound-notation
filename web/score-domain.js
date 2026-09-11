@@ -140,9 +140,11 @@
         integer(section.start_tick, `${label}.start_tick`, 0); integer(section.end_tick, `${label}.end_tick`, 1);
         if (!(section.start_tick < section.end_tick && section.end_tick <= score.length_ticks)) throw new Error(`${label} must fit within length_ticks.`);
         if (previousEnd > section.start_tick) throw new Error(`${label} overlaps the previous section.`); previousEnd = section.end_tick;
-        const source = sources.get(section.source); if (!source) throw new Error(`${label}.source is not registered: ${section.source}`);
-        validateContext(section.context ?? {}, `${label}.context`);
         if (!Array.isArray(section.objects)) throw new Error(`${label}.objects must be an array.`);
+        const source = section.source === null ? null : sources.get(section.source);
+        if (section.source === null && section.objects.length) throw new Error(`${label}.source is required when the section contains objects.`);
+        if (section.source !== null && !source) throw new Error(`${label}.source is not registered: ${section.source}`);
+        validateContext(section.context ?? {}, `${label}.context`);
         for (const [objectIndex, obj] of section.objects.entries()) {
           if (obj && ids.has(obj.id)) throw new Error(`duplicate id: ${obj.id}`);
           validateObject(obj, source, section, `${label}.objects[${objectIndex}]`, noteToMidi); ids.add(obj.id);
@@ -163,7 +165,10 @@
     const section = track.sections[index];
     if (!(section.start_tick < splitTick && splitTick < section.end_tick)) throw new Error("split tick must be inside the section.");
     if (section.objects.some(obj => obj.tick >= splitTick || obj.tick + obj.duration_ticks > splitTick)) throw new Error("split would move or cut existing objects; reposition them first.");
-    const right = {id:`${sectionId}-split`,start_tick:splitTick,end_tick:section.end_tick,source:null,context:clone(section.context ?? {}),objects:[]};
+    const used=new Set(result.tracks.flatMap(candidate=>candidate.sections.map(item=>item.id)));
+    const base=`${sectionId}-split`; let splitId=base, suffix=2;
+    while(used.has(splitId)) splitId=`${base}-${suffix++}`;
+    const right = {id:splitId,start_tick:splitTick,end_tick:section.end_tick,source:null,context:clone(section.context ?? {}),objects:[]};
     section.end_tick = splitTick; track.sections.splice(index, 1, section, right); return result;
   }
   function assignSectionSource(score, trackId, sectionId, sourceId, registryDoc) {

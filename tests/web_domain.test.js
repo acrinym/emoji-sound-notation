@@ -180,6 +180,17 @@ test("browser section split is explicit and never invents a new source", () => {
   const splitAt = 4 * ScoreDomain.TICKS_PER_QUARTER;
   const split = ScoreDomain.splitSection(migrated, piano.id, piano.sections[0].id, splitAt);
   assert.equal(split.tracks.find(track => track.id === piano.id).sections[1].source, null);
+  ScoreDomain.validateScoreV2(split, registry, noteToMidi);
+});
+
+test("browser repeated split uses unique section ids", () => {
+  let migrated = ScoreDomain.migrateV1ToV2(score, registry, noteToMidi);
+  const piano = migrated.tracks.find(track => track.sections[0].source === "instrument:piano");
+  migrated = ScoreDomain.splitSection(migrated, piano.id, piano.sections[0].id, 4 * ScoreDomain.TICKS_PER_QUARTER);
+  migrated = ScoreDomain.splitSection(migrated, piano.id, piano.sections[0].id, 2 * ScoreDomain.TICKS_PER_QUARTER);
+  const ids = migrated.tracks.find(track => track.id === piano.id).sections.map(section => section.id);
+  assert.deepEqual(ids, [`${piano.sections[0].id}`, `${piano.sections[0].id}-split-2`, `${piano.sections[0].id}-split`]);
+  ScoreDomain.validateScoreV2(migrated, registry, noteToMidi);
 });
 
 test("browser ESN1 migration preserves semantics and exact real-time placement", () => {
