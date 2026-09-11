@@ -106,11 +106,13 @@
     if (!ARTICULATIONS.has(obj.articulation ?? "normal")) throw new Error(`${label}.articulation is invalid.`);
     if (obj.type === "chord") {
       if (source.pitch_policy === "forbidden") throw new Error(`${label} cannot be a chord for ${source.id}.`);
-      expandChordPitches(obj, noteToMidi);
+      const pitches = expandChordPitches(obj, noteToMidi);
       if (!["close","open"].includes(obj.voicing ?? "close")) throw new Error(`${label}.voicing is invalid.`);
       if (obj.arpeggiation) {
         if (!["up","down"].includes(obj.arpeggiation.direction)) throw new Error(`${label}.arpeggiation direction is invalid.`);
         integer(obj.arpeggiation.step_ticks, `${label}.arpeggiation.step_ticks`, 0);
+        const realizedEnd = obj.tick + obj.duration_ticks + (pitches.length - 1) * obj.arpeggiation.step_ticks;
+        if (realizedEnd > section.end_tick) throw new Error(`${label} arpeggiation must fit every realized voice within its section.`);
       }
       return;
     }
