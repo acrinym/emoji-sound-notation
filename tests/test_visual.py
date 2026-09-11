@@ -7,6 +7,7 @@ from pathlib import Path
 
 from esn.model import ValidationError, load_json, load_registry, validate_score
 from esn.render import render_svg
+from esn.score import migrate_v1_to_v2
 from esn.visual import color_cue_for_midi, glyph_svg, load_visual_profile, render_glyph_sheet
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +74,14 @@ class VisualBindingTests(unittest.TestCase):
         self.assertNotIn("Segoe UI Emoji", rendered)
         for source in self.registry.values():
             self.assertNotIn(source["glyph"], rendered)
+
+    def test_esn2_renderer_is_deterministic_and_marks_flattened_score_view(self) -> None:
+        score = migrate_v1_to_v2(self.score, self.registry)
+        first = render_svg(score, self.registry, visual=self.visual, color_mode="pitch_class")
+        second = render_svg(score, self.registry, visual=self.visual, color_mode="pitch_class")
+        self.assertEqual(first, second)
+        self.assertIn("ESN/2", first)
+        self.assertIn("animal:cat", first)
 
     def test_half_semitone_rounding_matches_browser(self) -> None:
         color, cue = color_cue_for_midi(self.visual, 60.5, "pitch_class")

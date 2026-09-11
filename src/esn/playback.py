@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from .model import ValidationError, load_json, pitch_to_midi, validate_score
+from .score import (
+    document_rows, midi_to_hz_with_tuning, pitch_to_midi_with_tuning,
+    validate_document,
+)
 from .soundpack import binding_asset_path, resolve_sound_binding
 
 PLAYBACK_KEYS = {"format", "sample_rate", "seed", "profiles"}
@@ -22,8 +26,8 @@ WAVES = {"sine", "triangle", "square", "saw"}
 NOISE_SHAPES = {"white", "soft"}
 
 
-def midi_to_hz(midi: float) -> float:
-    return 440.0 * (2.0 ** ((midi - 69.0) / 12.0))
+def midi_to_hz(midi: float, a4_hz: float = 440.0) -> float:
+    return midi_to_hz_with_tuning(midi, a4_hz)
 
 
 def _number(value: Any, label: str, *, low: float | None = None, high: float | None = None) -> float:
@@ -98,11 +102,11 @@ def resolve_profile(playback: dict[str, Any], event: dict[str, Any]) -> dict[str
     return profile
 
 
-def _midi_at(event: dict[str, Any], at: float) -> float | None:
+def _midi_at(event: dict[str, Any], at: float, a4_hz: float = 440.0) -> float | None:
     if "pitch" not in event:
         return None
-    controls = [(0.0, pitch_to_midi(event["pitch"]))]
-    controls.extend((float(point["at"]), pitch_to_midi(point["pitch"])) for point in event.get("pitch_curve", []))
+    controls = [(0.0, pitch_to_midi_with_tuning(event["pitch"], a4_hz))]
+    controls.extend((float(point["at"]), pitch_to_midi_with_tuning(point["pitch"], a4_hz)) for point in event.get("pitch_curve", []))
     if controls[-1][0] < 1.0:
         controls.append((1.0, controls[-1][1]))
     for (left_at, left_midi), (right_at, right_midi) in zip(controls, controls[1:]):
@@ -153,7 +157,7 @@ def _read_pcm_wav(path: Path) -> tuple[int, list[float]]:
 
 def _mix_sample_event(
     samples: list[float], start: int, duration_s: float, sample_rate: int, event: dict[str, Any],
-    sound_pack: dict[str, Any], binding: dict[str, Any],
+    sound_pack: dict[str, Any], binding: dict[str, Any], a4_hz: float = 440.0,
 ) -> bool:
     try:
         source_rate, source = _read_pcm_wav(binding_asset_path(sound_pack, binding))
@@ -164,7 +168,7 @@ def _mix_sample_event(
     count = max(1, int(math.ceil(duration_s * sample_rate)))
     loop = bool(binding.get("loop", False))
     gain = float(binding.get("gain", 1.0)) * float(event.get("dynamics", 0.75))
-    root_midi = pitch_to_midi({"note": binding["root_note"]}) if binding.get("root_note") else None
+    root_midi = pitch_to_midi_with_tuning({"note": binding["root_note"]}, a4_hz) if binding.get("root_note") else None
     source_pos = 0.0
     fade_frames = max(1, int(round(sample_rate * 0.005)))
     for offset in range(count):
@@ -183,7 +187,7 @@ def _mix_sample_event(
         pitch_factor = 1.0
         if root_midi is not None and "pitch" in event:
             at = min(1.0, offset / max(1, count - 1))
-            pitch_factor = 2.0 ** ((_midi_at(event, at) - root_midi) / 12.0)
+            pitch_factor = 2.0 ** ((_midi_at(event, at, a4_hz) - root_midi) / 12.0)
         source_pos += (source_rate / sample_rate) * pitch_factor
     return True
 
@@ -192,19 +196,20 @@ def render_wav(
     score: dict[str, Any], sources: dict[str, dict[str, Any]], playback: dict[str, Any],
     sound_pack: dict[str, Any] | None = None,
 ) -> bytes:
-    validate_score(score, sources)
+    validate_document(score, sources)
     sample_rate = playback["sample_rate"]
-    beat_seconds = 60.0 / float(score.get("tempo_bpm", 120))
-    resolved = [(event, resolve_profile(playback, event)) for event in score["events"]]
+    rows = document_rows(score, sources)
+    resolved = [(row, row["event"], resolve_profile(playback, row["event"])) for row in rows]
     max_seconds = 0.25
-    for event, profile in resolved:
-        end = (float(event["onset"]) + float(event["duration"])) * beat_seconds
+    for row, _event, profile in resolved:
+        end = row["onset_seconds"] + row["duration_seconds"]
         max_seconds = max(max_seconds, end + float(profile.get("release", 0.05)))
     samples = [0.0] * (int(math.ceil(max_seconds * sample_rate)) + 1)
 
-    for event, profile in resolved:
-        onset_s = float(event["onset"]) * beat_seconds
-        duration_s = float(event["duration"]) * beat_seconds
+    for row, event, profile in resolved:
+        onset_s = row["onset_seconds"]
+        duration_s = row["duration_seconds"]
+        a4_hz = row["a4_hz"]
         attack = float(profile.get("attack", 0.01))
         release = float(profile.get("release", 0.05))
         gain = float(profile.get("gain", 0.7)) * float(event.get("dynamics", 0.75))
@@ -212,13 +217,12 @@ def render_wav(
         count = max(1, int(math.ceil((duration_s + release) * sample_rate)))
         mode = profile["mode"]
         binding = resolve_sound_binding(sound_pack, event) if sound_pack is not None else None
-        if binding is not None and _mix_sample_event(samples, start, duration_s, sample_rate, event, sound_pack, binding):
+        if binding is not None and _mix_sample_event(samples, start, duration_s, sample_rate, event, sound_pack, binding, a4_hz):
             continue
 
         rng = random.Random(_event_seed(playback["seed"], event["id"]))
         phase = 0.0
         soft_noise = 0.0
-
         for offset in range(count):
             local_s = offset / sample_rate
             if local_s < duration_s:
@@ -229,11 +233,10 @@ def render_wav(
                 envelope = 0.0 if release <= 0 else max(0.0, 1.0 - tail / release)
             if envelope <= 0:
                 continue
-
             if mode == "oscillator":
                 at = min(1.0, local_s / duration_s) if duration_s > 0 else 1.0
-                midi = _midi_at(event, at)
-                hz = midi_to_hz(midi) if midi is not None else float(profile.get("base_hz", 440.0))
+                midi = _midi_at(event, at, a4_hz)
+                hz = midi_to_hz(midi, a4_hz) if midi is not None else float(profile.get("base_hz", a4_hz))
                 phase += 2.0 * math.pi * hz / sample_rate
                 signal = _wave_value(profile.get("wave", "sine"), phase)
             elif mode == "noise":
@@ -246,7 +249,6 @@ def render_wav(
             else:
                 raw = rng.uniform(-1.0, 1.0)
                 signal = raw * math.exp(-18.0 * local_s)
-
             index = start + offset
             if index < len(samples):
                 samples[index] += signal * envelope * gain
@@ -255,13 +257,9 @@ def render_wav(
     for value in samples:
         clipped = max(-1.0, min(1.0, value))
         pcm.extend(struct.pack("<h", int(round(clipped * 32767.0))))
-
     output = BytesIO()
     with wave.open(output, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        wav.writeframes(bytes(pcm))
+        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(sample_rate); wav.writeframes(bytes(pcm))
     return output.getvalue()
 
 

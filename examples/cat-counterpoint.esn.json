@@ -1,0 +1,255 @@
+{
+  "format": "esn/2",
+  "title": "Cat Counterpoint in 4/4",
+  "length_ticks": 153600,
+  "defaults": {
+    "tempo_bpm": 96,
+    "time_signature": {
+      "numerator": 4,
+      "denominator": 4
+    },
+    "key": {
+      "tonic": "C",
+      "scale": "major"
+    },
+    "tuning": {
+      "a4_hz": 432.0
+    }
+  },
+  "metadata": {
+    "description": "Cat-heavy ESN/2 qualification score proving tracks, sections, chords, polyphony and independent musical context."
+  },
+  "tracks": [
+    {
+      "id": "lead-switcher",
+      "name": "🐈 Cat → 🔔 Bell",
+      "context": {},
+      "sections": [
+        {
+          "id": "lead-cats",
+          "start_tick": 0,
+          "end_tick": 76800,
+          "source": "animal:cat",
+          "context": {},
+          "objects": [
+            {
+              "id": "cat-c-major",
+              "type": "chord",
+              "gesture": "meow",
+              "tick": 9600,
+              "duration_ticks": 9600,
+              "root": "C4",
+              "quality": "major",
+              "inversion": 0,
+              "voicing": "close",
+              "dynamics": 0.82,
+              "articulation": "legato"
+            },
+            {
+              "id": "cat-e4",
+              "type": "note",
+              "gesture": "chirp",
+              "tick": 28800,
+              "duration_ticks": 4800,
+              "pitch": {
+                "note": "E4"
+              },
+              "dynamics": 0.72,
+              "articulation": "normal"
+            },
+            {
+              "id": "cat-g4",
+              "type": "note",
+              "gesture": "meow",
+              "tick": 48000,
+              "duration_ticks": 9600,
+              "pitch": {
+                "note": "G4"
+              },
+              "dynamics": 0.8,
+              "articulation": "legato"
+            }
+          ]
+        },
+        {
+          "id": "lead-bells",
+          "start_tick": 76800,
+          "end_tick": 153600,
+          "source": "instrument:bell",
+          "context": {
+            "key": {
+              "tonic": "A",
+              "scale": "minor"
+            }
+          },
+          "objects": [
+            {
+              "id": "bell-a4",
+              "type": "note",
+              "gesture": "chime",
+              "tick": 86400,
+              "duration_ticks": 19200,
+              "pitch": {
+                "note": "A4"
+              },
+              "dynamics": 0.65,
+              "articulation": "tenuto"
+            },
+            {
+              "id": "bell-e5",
+              "type": "note",
+              "gesture": "ring",
+              "tick": 115200,
+              "duration_ticks": 9600,
+              "pitch": {
+                "note": "E5"
+              },
+              "dynamics": 0.7,
+              "articulation": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cat-harmony",
+      "name": "🐈🐈 Cat Harmony",
+      "context": {
+        "tempo_bpm": 120,
+        "time_signature": {
+          "numerator": 3,
+          "denominator": 4
+        },
+        "key": {
+          "tonic": "A",
+          "scale": "minor_pentatonic"
+        }
+      },
+      "sections": [
+        {
+          "id": "harmony-cats",
+          "start_tick": 0,
+          "end_tick": 153600,
+          "source": "animal:cat",
+          "context": {
+            "tuning": {
+              "a4_hz": 432.0
+            }
+          },
+          "objects": [
+            {
+              "id": "cat-a-min-penta",
+              "type": "chord",
+              "gesture": "purr",
+              "tick": 19200,
+              "duration_ticks": 19200,
+              "root": "A3",
+              "quality": "minor_pentatonic",
+              "inversion": 0,
+              "voicing": "open",
+              "dynamics": 0.4,
+              "articulation": "tenuto"
+            },
+            {
+              "id": "cat-c5",
+              "type": "note",
+              "gesture": "yowl",
+              "tick": 67200,
+              "duration_ticks": 9600,
+              "pitch": {
+                "note": "C5"
+              },
+              "dynamics": 0.68,
+              "articulation": "accent"
+            },
+            {
+              "id": "cat-e4-echo",
+              "type": "note",
+              "gesture": "meow",
+              "tick": 105600,
+              "duration_ticks": 9600,
+              "pitch": {
+                "note": "E4"
+              },
+              "dynamics": 0.62,
+              "articulation": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "piano",
+      "name": "🎹 Piano",
+      "context": {},
+      "sections": [
+        {
+          "id": "piano-main",
+          "start_tick": 0,
+          "end_tick": 153600,
+          "source": "instrument:piano",
+          "context": {},
+          "objects": [
+            {
+              "id": "piano-c",
+              "type": "chord",
+              "gesture": "sustain",
+              "tick": 0,
+              "duration_ticks": 38400,
+              "root": "C3",
+              "quality": "major",
+              "inversion": 0,
+              "voicing": "open",
+              "dynamics": 0.38,
+              "articulation": "legato"
+            },
+            {
+              "id": "piano-am",
+              "type": "chord",
+              "gesture": "sustain",
+              "tick": 76800,
+              "duration_ticks": 38400,
+              "root": "A2",
+              "quality": "minor7",
+              "inversion": 1,
+              "voicing": "close",
+              "dynamics": 0.4,
+              "articulation": "legato"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rain",
+      "name": "🌧️ Rain Bed",
+      "context": {
+        "tempo_bpm": 72,
+        "time_signature": {
+          "numerator": 6,
+          "denominator": 8
+        }
+      },
+      "sections": [
+        {
+          "id": "rain-main",
+          "start_tick": 0,
+          "end_tick": 153600,
+          "source": "nature:rain",
+          "context": {},
+          "objects": [
+            {
+              "id": "rain-bed",
+              "type": "event",
+              "gesture": "drizzle",
+              "tick": 0,
+              "duration_ticks": 153600,
+              "dynamics": 0.22,
+              "articulation": "normal"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
