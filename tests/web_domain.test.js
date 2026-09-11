@@ -174,6 +174,29 @@ test("browser ESN2 cat chords expand and explode like the Python score domain", 
   assert.deepEqual(exploded.tracks[0].sections[0].objects.map(obj => obj.pitch.note), ["C4","E4","G4"]);
 });
 
+test("browser arpeggiated chords keep every realized voice inside the section", () => {
+  const q = ScoreDomain.TICKS_PER_QUARTER;
+  const score2 = {
+    format:"esn/2", title:"Bounded Arpeggio", length_ticks:3*q,
+    defaults:ScoreDomain.factoryDefaults(),
+    tracks:[{id:"cats",name:"Cat Chorus",context:{},sections:[{
+      id:"cats-a",start_tick:0,end_tick:3*q,source:"animal:cat",context:{},
+      objects:[{id:"cat-c",type:"chord",gesture:"meow",tick:q,duration_ticks:q,root:"C4",quality:"major",inversion:0,dynamics:.8,arpeggiation:{direction:"up",step_ticks:q}}],
+    }]}],
+  };
+  assert.throws(
+    () => ScoreDomain.validateScoreV2(score2, registry, noteToMidi),
+    /every realized voice/,
+  );
+
+  score2.tracks[0].sections[0].objects[0].arpeggiation.step_ticks = q / 2;
+  ScoreDomain.validateScoreV2(score2, registry, noteToMidi);
+  const rows = ScoreDomain.flattenScore(score2, registry, noteToMidi);
+  assert.ok(rows.every(row => row.tick + row.duration_ticks <= 3*q));
+  const exploded = ScoreDomain.explodeChord(score2, "cat-c", registry, noteToMidi);
+  ScoreDomain.validateScoreV2(exploded, registry, noteToMidi);
+});
+
 test("browser section split is explicit and never invents a new source", () => {
   const migrated = ScoreDomain.migrateV1ToV2(score, registry, noteToMidi);
   const piano = migrated.tracks.find(track => track.sections[0].source === "instrument:piano");
