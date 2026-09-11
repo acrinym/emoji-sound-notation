@@ -193,7 +193,7 @@ def _validate_object(obj: Any, source: dict[str, Any], section: dict[str, Any], 
     if kind == "chord":
         if policy == "forbidden":
             raise ValidationError(f"{label} cannot be a chord because {source['id']} forbids pitch")
-        expand_chord_pitches(obj)
+        pitches = expand_chord_pitches(obj)
         if obj.get("voicing", "close") not in {"close", "open"}:
             raise ValidationError(f"{label}.voicing must be close or open")
         arp = obj.get("arpeggiation")
@@ -202,7 +202,10 @@ def _validate_object(obj: Any, source: dict[str, Any], section: dict[str, Any], 
                 raise ValidationError(f"{label}.arpeggiation must contain direction and step_ticks")
             if arp["direction"] not in {"up", "down"}:
                 raise ValidationError(f"{label}.arpeggiation.direction must be up or down")
-            _integer(arp["step_ticks"], f"{label}.arpeggiation.step_ticks", minimum=0)
+            step_ticks = _integer(arp["step_ticks"], f"{label}.arpeggiation.step_ticks", minimum=0)
+            realized_end = tick + duration + (len(pitches) - 1) * step_ticks
+            if realized_end > section["end_tick"]:
+                raise ValidationError(f"{label} arpeggiation must fit every realized voice within its section")
         return
 
     pitch = obj.get("pitch")
