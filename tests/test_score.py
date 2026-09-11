@@ -77,6 +77,25 @@ class ScoreGrammarTests(unittest.TestCase):
         self.assertTrue(all(obj["tick"] == TICKS_PER_QUARTER for obj in objects))
         self.assertTrue(all(obj["duration_ticks"] == TICKS_PER_QUARTER for obj in objects))
 
+    def test_arpeggiated_chord_requires_every_voice_to_fit_section(self):
+        score = self.cat_score()
+        section = score["tracks"][0]["sections"][0]
+        chord = section["objects"][0]
+        section["end_tick"] = 3 * TICKS_PER_QUARTER
+        chord["arpeggiation"] = {"direction": "up", "step_ticks": TICKS_PER_QUARTER}
+        with self.assertRaisesRegex(ValueError, "every realized voice"):
+            validate_score_v2(score, self.registry)
+
+        chord["arpeggiation"]["step_ticks"] = TICKS_PER_QUARTER // 2
+        validate_score_v2(score, self.registry)
+        rows = flatten_score(score, self.registry)
+        self.assertTrue(all(
+            row["tick"] + row["duration_ticks"] <= section["end_tick"]
+            for row in rows
+        ))
+        exploded = explode_chord(score, "cat-c", self.registry)
+        validate_score_v2(exploded, self.registry)
+
     def test_split_section_creates_an_unassigned_new_section_without_mutation(self):
         score = self.cat_score()
         before = copy.deepcopy(score["tracks"][0]["sections"][0]["objects"])
