@@ -231,3 +231,16 @@ New deterministic ESN/2 Cat Counterpoint receipts:
 - cue CSV: `076023A52FCECF9C567CBCEFBBD3C6335EFC699BC2A7411E419BBB2D51A74793`.
 
 The real Edge customer journey was rerun against this same finished tree on September 11, 2026 and again recorded **33/33 assertions green** with **0 browser errors**. The in-repository screenshots remain the preserved historical captures from the original qualification pass rather than being overwritten by later audit runs.
+
+## Train 6 exact GitHub product-head qualification
+
+Product head `aa80ddc8f3c529ae6e4bb52b548c266f5f2a8afe` (tree `c65356952556b137f444191fe8729a9d46f8e3cf`) was pushed to `beadtrain6/score-grammar` and opened as PR #6 against `main@c057dd60ab48ca83732a055aa66298f60d3c8d47`.
+
+GitHub independently qualified that exact product SHA twice:
+
+- push-triggered CI run `34570365254` — **success**;
+- pull-request CI run `34570417010` — **success**.
+
+The PR was mergeable at the qualified product head. GitHub reported no submitted reviews and no unresolved inline review threads at that point.
+
+After those remote checks succeeded, qualification bead `emoji-sound-notation-894.5` and parent epic `emoji-sound-notation-894` were closed, and the Train 6 manifest advanced from `in_progress` to `complete`. The resulting closure-only commit is requalified separately before merge consideration.

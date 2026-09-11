@@ -5,7 +5,7 @@ description = """
 Transform ESN from a flat event timeline into a notation-first multi-track score composer with explicit sections, inherited musical context, polyphony, chords, A4=432 tuning, migration, and real-browser product proof.
 """
 created     = "2026-09-10"
-status      = "in_progress"
+status      = "complete"
 
 [[cars]]
 id             = "score_grammar"
